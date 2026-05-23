@@ -179,6 +179,7 @@ function HomeContent() {
 
       try {
         setLoading(true);
+        setError(null);
         setHasMoreSearchResults(false);
         const categoryIdsCsv = getAllowedCategoryIds().join(',');
         const data = await fetchWithRetry(() =>
@@ -193,7 +194,7 @@ function HomeContent() {
         setBooks(data);
       } catch (err) {
         console.error('[HOME] Error fetching books:', err);
-        setError('Không thể tải danh sách sách. Vui lòng thử lại sau.');
+        setError('Lỗi khi tìm kiếm. Vui lòng thử lại.');
       } finally {
         setLoading(false);
       }
@@ -286,6 +287,7 @@ function HomeContent() {
     const matchCategory = selectedCategories.length === 0 || allowedCategoryIds.has(catId) || allowedCategoryIds.has(book.parentCategoryId as number || book.category?.parentId as number);
 
     const matchSearch = true;
+    const isNotDeleted = !book.isDeleted;
 
     // Lọc theo khoảng giá
     const price = Number(book.price) || 0;
@@ -293,7 +295,7 @@ function HomeContent() {
     const maxP = maxPrice ? Number(maxPrice) : Infinity;
     const matchPrice = price >= minP && price <= maxP;
 
-    return matchCategory && matchSearch && matchPrice;
+    return matchCategory && matchSearch && matchPrice && isNotDeleted;
   });
 
   const hasActiveFilters = selectedCategories.length > 0 || Boolean(minPrice) || Boolean(maxPrice);

@@ -13,6 +13,7 @@ import type { Book, Review } from '@/src/types';
 import { reviewService } from '@/src/api/reviewService';
 import { useAuth } from '@/src/auth/context';
 import { uploadService } from '@/src/api/uploadService';
+import { orderService } from '@/src/api/orderService';
 
 
 export default function DetailPage() {
@@ -33,6 +34,7 @@ export default function DetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const { addToCart, loading: addToCartLoading } = useAddToCart();
+  const [hasPurchased, setHasPurchased] = useState(false);
 
   // Edit review state
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
@@ -41,6 +43,8 @@ export default function DetailPage() {
   const [editHoverRating, setEditHoverRating] = useState(0);
   const [editMediaUrls, setEditMediaUrls] = useState<string[]>([]);
   const [editNewMediaFiles, setEditNewMediaFiles] = useState<File[]>([]);
+
+  const { user: authUser, isSignedIn } = useAuth();
 
   // LOAD DATA
   useEffect(() => {
@@ -71,8 +75,17 @@ export default function DetailPage() {
     fetchData();
   }, [id]);
 
+  useEffect(() => {
+    if (isSignedIn && authUser) {
+      orderService.checkPurchase(authUser.id, Number(id))
+        .then(setHasPurchased)
+        .catch(err => console.error("Error checking purchase", err));
+    } else {
+      setHasPurchased(false);
+    }
+  }, [id, isSignedIn, authUser]);
+
   // ADD REVIEW
-  const { user: authUser, isSignedIn } = useAuth();
 
   const handleSubmitReview = async () => {
     if (!newReview.trim()) return;
@@ -228,6 +241,12 @@ export default function DetailPage() {
     const currentName = authUser.fullName || authUser.username || '';
     return review.userName === currentName;
   };
+
+  // Kiểm tra xem user đã có review cho cuốn sách này chưa
+  const hasAlreadyReviewed = authUser
+    ? reviews.some(r => r.userId === authUser.id ||
+        (!r.userId && (r.userName === (authUser.fullName || authUser.username))))
+    : false;
 
   if (loading) return (
     <div style={{
@@ -590,33 +609,34 @@ export default function DetailPage() {
             {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '12px' }}>
               <button
-                onClick={() => void handleAddToCart()}
-                disabled={addToCartLoading}
+                onClick={() => { if (!book.isDeleted) void handleAddToCart(); }}
+                disabled={addToCartLoading || book.isDeleted}
                 style={{
                   flex: 1,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
                   padding: '14px 24px',
-                  background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                  color: '#fff',
+                  background: book.isDeleted ? '#d1d5db' : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                  color: book.isDeleted ? '#6b7280' : '#fff',
                   border: 'none', borderRadius: '12px',
                   fontSize: '16px', fontWeight: '600',
-                  cursor: addToCartLoading ? 'not-allowed' : 'pointer',
+                  cursor: (addToCartLoading || book.isDeleted) ? 'not-allowed' : 'pointer',
                   opacity: addToCartLoading ? 0.7 : 1,
-                  boxShadow: '0 4px 14px rgba(124, 58, 237, 0.35)',
+                  boxShadow: book.isDeleted ? 'none' : '0 4px 14px rgba(124, 58, 237, 0.35)',
                   transition: 'all 0.2s ease'
                 }}
                 onMouseEnter={e => {
-                  if (addToCartLoading) return;
+                  if (addToCartLoading || book.isDeleted) return;
                   (e.target as HTMLElement).style.transform = 'translateY(-2px)';
                   (e.target as HTMLElement).style.boxShadow = '0 6px 20px rgba(124, 58, 237, 0.45)';
                 }}
                 onMouseLeave={e => {
+                  if (book.isDeleted) return;
                   (e.target as HTMLElement).style.transform = 'translateY(0)';
                   (e.target as HTMLElement).style.boxShadow = '0 4px 14px rgba(124, 58, 237, 0.35)';
                 }}
               >
                 <ShoppingCart size={20} />
-                {addToCartLoading ? 'Đang thêm...' : 'Thêm vào giỏ hàng'}
+                {book.isDeleted ? 'Sản phẩm ngừng kinh doanh' : (addToCartLoading ? 'Đang thêm...' : 'Thêm vào giỏ hàng')}
               </button>
 
               <button
@@ -676,6 +696,7 @@ export default function DetailPage() {
 
         {/* REVIEW FORM */}
         {isSignedIn ? (
+          hasPurchased && !hasAlreadyReviewed ? (
         <div style={{
           padding: '24px',
           background: '#fff',
@@ -837,6 +858,49 @@ export default function DetailPage() {
             </div>
           )}
         </div>
+          ) : hasPurchased && hasAlreadyReviewed ? (
+            <div style={{
+              padding: '20px 24px',
+              background: '#f0fdf4',
+              borderRadius: '16px',
+              border: '1px solid #bbf7d0',
+              display: 'flex', alignItems: 'center', gap: '14px',
+              marginBottom: '32px'
+            }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                background: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Star size={20} fill="#fff" stroke="none" />
+              </div>
+              <div>
+                <p style={{ fontSize: '15px', fontWeight: '600', color: '#15803d', margin: '0 0 2px' }}>
+                  Bạn đã đánh giá sản phẩm này rồi
+                </p>
+                <p style={{ fontSize: '13px', margin: '0', color: '#166534' }}>
+                  Mỗi tài khoản chỉ được đánh giá một lần. Bạn có thể chỉnh sửa đánh giá đã gửi bên dưới.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              padding: '24px',
+              background: '#fff',
+              borderRadius: '16px',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)',
+              textAlign: 'center',
+              marginBottom: '32px'
+            }}>
+              <BookOpen size={32} style={{ color: '#9ca3af', marginBottom: '8px' }} />
+              <p style={{ fontSize: '15px', fontWeight: '600', color: '#374151', margin: '0 0 8px' }}>
+                Bạn chưa mua cuốn sách này
+              </p>
+              <p style={{ fontSize: '14px', color: '#6b7280', margin: '0' }}>
+                Bạn cần đặt mua để có thể đánh giá sản phẩm.
+              </p>
+            </div>
+          )
         ) : (
         <div style={{
           padding: '24px',
@@ -966,15 +1030,53 @@ export default function DetailPage() {
                         </span>
                       </div>
                     ) : (
-                      <div style={{ display: 'flex', gap: '2px', marginTop: '2px' }}>
-                        {[1,2,3,4,5].map(star => (
-                          <Star
-                            key={star}
-                            size={14}
-                            fill={star <= r.rating ? "#f59e0b" : "#e5e7eb"}
-                            stroke="none"
-                          />
-                        ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: '2px' }}>
+                          {[1,2,3,4,5].map(star => (
+                            <Star
+                              key={star}
+                              size={14}
+                              fill={star <= r.rating ? "#f59e0b" : "#e5e7eb"}
+                              stroke="none"
+                            />
+                          ))}
+                          <span style={{ fontSize: '12px', color: '#6b7280', marginLeft: '4px', alignSelf: 'center', fontWeight: '500' }}>
+                            {r.rating}/5
+                          </span>
+                        </div>
+                        {(r.createdAt || (r as any).updatedAt) && (() => {
+                          const formatDate = (s: string) => {
+                            try {
+                              // Backend (Docker) chạy UTC, thêm 'Z' để browser tự convert sang giờ local
+                              const utcStr = s.endsWith('Z') ? s : s + 'Z';
+                              const d = new Date(utcStr);
+                              if (isNaN(d.getTime())) return s;
+                              return d.toLocaleString('vi-VN', {
+                                day: '2-digit', month: '2-digit', year: 'numeric',
+                                hour: '2-digit', minute: '2-digit'
+                              });
+                            } catch { return s; }
+                          };
+                          const updatedAt = (r as any).updatedAt as string | undefined;
+                          const isEdited = updatedAt && r.createdAt && updatedAt !== r.createdAt;
+                          const displayDate = isEdited ? updatedAt! : (r.createdAt ?? '');
+                          return (
+                            <span style={{
+                              fontSize: '12px', color: '#9ca3af',
+                              display: 'flex', alignItems: 'center', gap: '4px'
+                            }}>
+                              <span style={{ color: '#d1d5db' }}>•</span>
+                              {isEdited && (
+                                <span style={{
+                                  fontSize: '11px', fontStyle: 'italic',
+                                  color: '#a78bfa', background: '#f5f3ff',
+                                  padding: '1px 6px', borderRadius: '8px'
+                                }}>đã sửa</span>
+                              )}
+                              {formatDate(displayDate)}
+                            </span>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>

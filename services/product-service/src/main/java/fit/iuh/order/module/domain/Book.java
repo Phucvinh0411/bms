@@ -54,6 +54,9 @@ public class Book {
     @Column(name = "parent_category_id")
     private Long parentCategoryId;
 
+    @Column(name = "is_deleted", columnDefinition = "boolean default false")
+    private Boolean isDeleted = false;
+
     @OneToMany(mappedBy = "book", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<BookImage> secondaryImages = new ArrayList<>();
 

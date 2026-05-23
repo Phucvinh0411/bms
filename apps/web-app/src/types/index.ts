@@ -20,6 +20,7 @@ export interface Book {
   rating?: number;
   originalPrice?: string;
   image?: string;
+  isDeleted?: boolean;
   [key: string]: unknown; // Cho phép các field mở rộng từ API
 }
 
@@ -52,6 +53,7 @@ export interface Review {
   rating: number;
   mediaUrls?: string[];
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ReviewCreateRequest {

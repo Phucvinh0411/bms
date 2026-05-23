@@ -126,6 +126,7 @@ public class BookService {
     // Xoá sách
     public void deleteBook(Long id) {
         Book existingBook = getBookById(id);
-        bookRepository.delete(existingBook);
+        existingBook.setIsDeleted(true);
+        bookRepository.save(existingBook);
     }
 }

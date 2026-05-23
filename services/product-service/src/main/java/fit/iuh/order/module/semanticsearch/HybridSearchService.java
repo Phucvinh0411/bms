@@ -25,13 +25,21 @@ public class HybridSearchService {
                                                     BigDecimal maxPrice) {
         int safeLimit = limit > 0 ? limit : 10;
         int safeOffset = Math.max(offset, 0);
-        float[] embedding = semanticEmbeddingService.generateEmbedding(query);
-        String vectorLiteral = semanticEmbeddingService.toVectorLiteral(embedding);
 
-        return bookSemanticRepository.hybridSearch(vectorLiteral, query, safeLimit, safeOffset, categoryIdsCsv, minPrice, maxPrice)
-            .stream()
-            .map(this::toDto)
-            .toList();
+        try {
+            float[] embedding = semanticEmbeddingService.generateEmbedding(query);
+            String vectorLiteral = semanticEmbeddingService.toVectorLiteral(embedding);
+            return bookSemanticRepository.hybridSearch(vectorLiteral, query, safeLimit, safeOffset, categoryIdsCsv, minPrice, maxPrice)
+                .stream()
+                .map(this::toDto)
+                .toList();
+        } catch (Exception e) {
+            // Ollama unavailable: fallback to keyword/text search
+            return bookSemanticRepository.textSearch(query, safeLimit, safeOffset, categoryIdsCsv, minPrice, maxPrice)
+                .stream()
+                .map(this::toDto)
+                .toList();
+        }
     }
 
     private SemanticBookSearchDTO toDto(SemanticBookSearchProjection book) {

@@ -120,6 +120,10 @@ public class OrderService {
         orderRepository.deleteById(id);
     }
 
+    public boolean checkPurchase(Long userId, Long bookId) {
+        return orderRepository.existsByUserIdAndBookIdAndStatusNot(userId, bookId, OrderStatus.CANCELED);
+    }
+
     private OrderResponse mapToResponse(Order order) {
         return OrderResponse.builder()
                 .id(order.getId())
