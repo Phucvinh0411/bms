@@ -62,11 +62,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function createSessionId() {
+function getSessionId(user: any) {
+  // Ưu tiên dùng id, _id hoặc email của user làm khóa duy nhất
+  const identifier = user?.id || user?._id || user?.email;
+  
+  if (identifier) {
+    return `session_user_${identifier}`;
+  }
+
+  // Fallback an toàn dự phòng nếu API không trả về các field trên
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-
   return `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -315,20 +322,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("storage", handleStorage);
   }, [clearActiveSession]);
 
-  const persistSession = useCallback(
+const persistSession = useCallback(
     (sessionData: {
       token: string;
       refreshToken: string;
       user: UserProfile;
       role?: string;
     }) => {
-      const sessionId = createSessionId();
+      // 1. Lấy ID cố định của user thay vì random
+      const sessionId = getSessionId(sessionData.user);
+      
+      // 2. Kiểm tra xem session này đã tồn tại trong kho chưa
+      const existingSession = sessionsRef.current[sessionId];
+
+      // 3. Tạo session mới: Ghi đè token và thời gian mới nhất, giữ lại role cũ nếu có
       const nextSession: AuthSessionRecord = {
+        ...(existingSession || {}), // Kế thừa data cũ (nếu có)
         token: sessionData.token,
         refreshToken: sessionData.refreshToken,
         user: sessionData.user,
-        role: sessionData.role ?? sessionData.user.role,
-        lastAccessedAt: Date.now(),
+        role: sessionData.role ?? sessionData.user.role ?? existingSession?.role,
+        lastAccessedAt: Date.now(), // Luôn cập nhật thời gian mới nhất
       };
 
       const nextSessions = {
