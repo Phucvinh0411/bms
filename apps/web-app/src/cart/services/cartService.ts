@@ -1,6 +1,7 @@
 import type { AddToCartRequest, CartMutationRequest } from '../types'
 import { getEffectiveUserId } from '../utils/userContext'
 import { cartApiService } from '@/src/api/cartApiService'
+import { getAuthToken as getActiveAuthToken } from '@/src/api/client'
 
 function emitCartChanged() {
   if (typeof window !== 'undefined') {
@@ -9,7 +10,7 @@ function emitCartChanged() {
 }
 
 function getAuthToken() {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+  const token = getActiveAuthToken()
   return token ? `Bearer ${token}` : null
 }
 
