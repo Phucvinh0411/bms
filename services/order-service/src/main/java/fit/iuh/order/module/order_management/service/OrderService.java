@@ -82,8 +82,22 @@ public class OrderService {
         // Tự động tạo link thanh toán PayOS VietQR nếu phương thức là PAYOS
         if ("PAYOS".equalsIgnoreCase(request.getPaymentMethod()) && payOSPaymentStrategy != null) {
             try {
-                String returnUrl = "http://localhost:3000/checkout?status=success&orderId=" + savedOrder.getId();
-                String cancelUrl = "http://localhost:3000/cart";
+                String returnUrl = request.getReturnUrl();
+                if (returnUrl == null || returnUrl.trim().isEmpty()) {
+                    returnUrl = "http://localhost:3000/checkout?status=success&orderId=" + savedOrder.getId();
+                } else {
+                    if (!returnUrl.contains("orderId=")) {
+                        if (returnUrl.contains("?")) {
+                            returnUrl += "&orderId=" + savedOrder.getId();
+                        } else {
+                            returnUrl += "?orderId=" + savedOrder.getId();
+                        }
+                    }
+                }
+                String cancelUrl = request.getCancelUrl();
+                if (cancelUrl == null || cancelUrl.trim().isEmpty()) {
+                    cancelUrl = "http://localhost:3000/cart";
+                }
                 Map<String, Object> paymentData = payOSPaymentStrategy.createPaymentLink(savedOrder, returnUrl, cancelUrl);
                 if (paymentData != null && paymentData.containsKey("checkoutUrl")) {
                     response.setCheckoutUrl((String) paymentData.get("checkoutUrl"));

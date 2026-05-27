@@ -422,10 +422,12 @@ export default function CheckoutPage() {
     const payload = buildCheckoutPayload()
     if (!payload) return
 
-    // Đính kèm phương thức thanh toán được chọn
+    // Đính kèm phương thức thanh toán được chọn cùng URL chuyển hướng động
     const finalPayload = {
       ...payload,
       paymentMethod,
+      returnUrl: `${window.location.origin}/checkout?status=success`,
+      cancelUrl: `${window.location.origin}/cart`,
     }
 
     setLoading(true)

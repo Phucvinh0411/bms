@@ -7,6 +7,8 @@ export interface CheckoutRequest {
   voucherCode?: string;
   items?: Array<{ bookId: number; quantity: number }>;
   paymentMethod?: string;
+  returnUrl?: string;
+  cancelUrl?: string;
 }
 
 export interface ShippingAddress {

@@ -20,4 +20,6 @@ public class OrderRequest {
     private String voucherCode;
     private List<OrderItemRequest> items;
     private String paymentMethod;
+    private String returnUrl;
+    private String cancelUrl;
 }
