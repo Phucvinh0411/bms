@@ -101,6 +101,9 @@ services:
       - ORDER_DB_URL=${ORDER_DB_URL:-jdbc:postgresql://postgres:5432/order_db}
       - ORDER_DB_USER=${ORDER_DB_USER:-order_db}
       - ORDER_DB_PASSWORD=${ORDER_DB_PASSWORD:-order_db}
+      - PAYOS_CLIENT_ID=${PAYOS_CLIENT_ID}
+      - PAYOS_API_KEY=${PAYOS_API_KEY}
+      - PAYOS_CHECKSUM_KEY=${PAYOS_CHECKSUM_KEY}
     networks:
       - bookstore-network
 

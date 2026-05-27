@@ -25,4 +25,5 @@ public class OrderResponse {
     private BigDecimal finalTotal;
     private String status;
     private List<OrderItemResponse> items;
+    private String checkoutUrl;
 }
