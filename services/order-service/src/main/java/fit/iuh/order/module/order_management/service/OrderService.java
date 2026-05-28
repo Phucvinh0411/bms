@@ -10,14 +10,24 @@ import fit.iuh.order.module.order_management.dto.*;
 import fit.iuh.order.module.models.Order;
 import fit.iuh.order.module.models.enums.OrderStatus;
 import fit.iuh.order.module.order_management.repository.OrderRepository;
+import fit.iuh.order.module.strategy.PayOSPaymentStrategy;
+import fit.iuh.order.module.state.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service("orderManagementOrderService")
 public class OrderService {
+    @Autowired(required = false)
+    private PayOSPaymentStrategy payOSPaymentStrategy;
+
+    @Autowired(required = false)
+    private fit.iuh.order.module.repository.PaymentTransactionRepository paymentTransactionRepository;
+
     private final OrderRepository orderRepository;
     private final StockCheckHandler stockCheckHandler;
     private final VoucherCheckHandler voucherCheckHandler;
@@ -67,7 +77,42 @@ public class OrderService {
             throw new IllegalStateException("Checkout pipeline did not persist order");
         }
 
-        return mapToResponse(savedOrder);
+        OrderResponse response = mapToResponse(savedOrder);
+
+        // Tự động tạo link thanh toán PayOS VietQR nếu phương thức là PAYOS
+        if ("PAYOS".equalsIgnoreCase(request.getPaymentMethod()) && payOSPaymentStrategy != null) {
+            try {
+                String returnUrl = request.getReturnUrl();
+                if (returnUrl == null || returnUrl.trim().isEmpty()) {
+                    returnUrl = "http://localhost:3000/checkout?status=success&orderId=" + savedOrder.getId();
+                } else {
+                    if (!returnUrl.contains("orderId=")) {
+                        if (returnUrl.contains("?")) {
+                            returnUrl += "&orderId=" + savedOrder.getId();
+                        } else {
+                            returnUrl += "?orderId=" + savedOrder.getId();
+                        }
+                    }
+                }
+                String cancelUrl = request.getCancelUrl();
+                if (cancelUrl == null || cancelUrl.trim().isEmpty()) {
+                    cancelUrl = "http://localhost:3000/cart";
+                }
+                Map<String, Object> paymentData = payOSPaymentStrategy.createPaymentLink(savedOrder, returnUrl, cancelUrl);
+                if (paymentData != null) {
+                    if (paymentData.containsKey("checkoutUrl")) {
+                        response.setCheckoutUrl((String) paymentData.get("checkoutUrl"));
+                    }
+                    if (paymentData.containsKey("qrCode")) {
+                        response.setQrCode((String) paymentData.get("qrCode"));
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Lỗi tự động tạo link thanh toán PayOS VietQR: " + e.getMessage());
+            }
+        }
+
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -120,11 +165,60 @@ public class OrderService {
         orderRepository.deleteById(id);
     }
 
+    @Transactional
+    public OrderResponse cancelOrder(Long id) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng với ID: " + id));
+
+        // Xác định State hiện tại bằng State Pattern
+        OrderState currentState;
+        switch (order.getStatus()) {
+            case PENDING:
+                currentState = new PendingState();
+                break;
+            case SHIPPING:
+                currentState = new ShippingState();
+                break;
+            case COMPLETED:
+                currentState = new CompletedState();
+                break;
+            case CANCELED:
+                throw new IllegalStateException("Đơn hàng này đã ở trạng thái hủy");
+            default:
+                currentState = new PendingState();
+        }
+
+        // Thực hiện hủy thông qua State Pattern
+        currentState.cancel(order);
+
+        return mapToResponse(orderRepository.save(order));
+    }
+
     public boolean checkPurchase(Long userId, Long bookId) {
         return orderRepository.existsByUserIdAndBookIdAndStatusNot(userId, bookId, OrderStatus.CANCELED);
     }
 
     private OrderResponse mapToResponse(Order order) {
+        String paymentStatus = "CHƯA THANH TOÁN"; // default
+        if (paymentTransactionRepository != null) {
+            var txOpt = paymentTransactionRepository.findById(order.getId());
+            if (txOpt.isPresent()) {
+                var statusStr = txOpt.get().getStatus().name();
+                if ("PAID".equalsIgnoreCase(statusStr)) {
+                    paymentStatus = "ĐÃ THANH TOÁN (VietQR)";
+                } else {
+                    paymentStatus = "CHƯA THANH TOÁN (VietQR)";
+                }
+            } else {
+                // Đơn hàng COD
+                if (order.getStatus() == OrderStatus.COMPLETED) {
+                    paymentStatus = "ĐÃ THANH TOÁN (COD)";
+                } else {
+                    paymentStatus = "CHƯA THANH TOÁN (COD)";
+                }
+            }
+        }
+
         return OrderResponse.builder()
                 .id(order.getId())
                 .userId(order.getUserId())
@@ -136,6 +230,8 @@ public class OrderService {
             .orderDiscount(order.getOrderDiscount())
             .finalTotal(order.getFinalTotal())
                 .status(order.getStatus().name())
+                .paymentStatus(paymentStatus)
+                .shippingAddress(order.getShippingAddress())
                 .items(order.getItems().stream().map(item -> OrderItemResponse.builder()
                         .id(item.getId())
                         .bookId(item.getBookId())

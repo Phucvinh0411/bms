@@ -19,4 +19,7 @@ public class OrderRequest {
     private Double shippingLongitude;
     private String voucherCode;
     private List<OrderItemRequest> items;
+    private String paymentMethod;
+    private String returnUrl;
+    private String cancelUrl;
 }

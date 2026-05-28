@@ -42,7 +42,7 @@ public class AddressSelectionHandler extends CheckoutHandler {
 
     private void applyAddress(CheckoutContext context, ShippingAddress address) {
         context.setShippingAddressId(address.getId());
-        context.setShippingAddress(address.getAddressLine());
+        context.setShippingAddress(address.getRecipientName() + ", " + address.getPhoneNumber() + ", " + address.getAddressLine());
         context.setShippingLatitude(address.getLatitude());
         context.setShippingLongitude(address.getLongitude());
     }

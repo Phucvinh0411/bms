@@ -1,8 +1,6 @@
 package fit.iuh.order.module.handler;
 
-import fit.iuh.order.module.cart_management.repository.CartItemRepository;
-import fit.iuh.order.module.cart_management.repository.CartRepository;
-import fit.iuh.order.module.models.Cart;
+import fit.iuh.order.module.cart_management.repository.CartRedisRepository;
 import fit.iuh.order.module.models.Order;
 import fit.iuh.order.module.models.OrderItem;
 import fit.iuh.order.module.models.enums.OrderStatus;
@@ -17,8 +15,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PersistOrderHandler extends CheckoutHandler {
     private final OrderRepository orderRepository;
-    private final CartRepository cartRepository;
-    private final CartItemRepository cartItemRepository;
+    private final CartRedisRepository cartRedisRepository;
 
     @Override
     protected void process(CheckoutContext context) {
@@ -54,14 +51,8 @@ public class PersistOrderHandler extends CheckoutHandler {
         context.setOrder(savedOrder);
 
         if (context.getCartId() != null) {
-            cartItemRepository.deleteAll(cartItemRepository.findByCartId(context.getCartId()));
-            cartRepository.findById(context.getCartId()).ifPresent(cart -> clearCart(cart));
+            cartRedisRepository.deleteCart(context.getCartId());
         }
-    }
-
-    private void clearCart(Cart cart) {
-        cart.setTotalEstimated(BigDecimal.ZERO);
-        cartRepository.save(cart);
     }
 
     private BigDecimal valueOrZero(BigDecimal value) {

@@ -106,3 +106,75 @@ export async function submitOrder(payload: CheckoutRequest): Promise<CheckoutRes
   }
   throw lastError
 }
+
+export async function getOrders(): Promise<CheckoutResponse[]> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const { submitUrls } = buildOrderApiCandidates(base)
+    for (let j = 0; j < submitUrls.length; j++) {
+      const url = submitUrls[j]
+      try {
+        const res = await axios.get(url, { headers })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === submitUrls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}
+
+export async function getOrderById(id: number | string): Promise<CheckoutResponse> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const { submitUrls } = buildOrderApiCandidates(base)
+    for (let j = 0; j < submitUrls.length; j++) {
+      const url = `${submitUrls[j]}/${id}`
+      try {
+        const res = await axios.get(url, { headers })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === submitUrls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}
+
+export async function cancelOrder(id: number | string): Promise<CheckoutResponse> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const { submitUrls } = buildOrderApiCandidates(base)
+    for (let j = 0; j < submitUrls.length; j++) {
+      const url = `${submitUrls[j]}/${id}/cancel`
+      try {
+        const res = await axios.post(url, {}, { headers })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === submitUrls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}

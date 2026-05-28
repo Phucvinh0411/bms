@@ -93,6 +93,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -101,6 +105,12 @@ services:
       - ORDER_DB_URL=${ORDER_DB_URL:-jdbc:postgresql://postgres:5432/order_db}
       - ORDER_DB_USER=${ORDER_DB_USER:-order_db}
       - ORDER_DB_PASSWORD=${ORDER_DB_PASSWORD:-order_db}
+      - PAYOS_CLIENT_ID=${PAYOS_CLIENT_ID}
+      - PAYOS_API_KEY=${PAYOS_API_KEY}
+      - PAYOS_CHECKSUM_KEY=${PAYOS_CHECKSUM_KEY}
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     networks:
       - bookstore-network
 
@@ -199,6 +209,27 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    networks:
+      - bookstore-network
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: bookstore-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    networks:
+      - bookstore-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: bookstore-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
     networks:
       - bookstore-network
 

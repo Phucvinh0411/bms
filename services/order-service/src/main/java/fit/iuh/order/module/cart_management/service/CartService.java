@@ -1,56 +1,54 @@
 package fit.iuh.order.module.cart_management.service;
 
-import fit.iuh.order.module.models.Cart;
-import fit.iuh.order.module.models.CartItem;
 import fit.iuh.order.module.cart_management.dto.AddCartItemRequest;
 import fit.iuh.order.module.cart_management.dto.CartItemResponse;
 import fit.iuh.order.module.cart_management.dto.CartResponse;
 import fit.iuh.order.module.cart_management.dto.RemoveCartItemRequest;
 import fit.iuh.order.module.cart_management.dto.UpdateCartItemQuantityRequest;
+import fit.iuh.order.module.cart_management.model.RedisCart;
+import fit.iuh.order.module.cart_management.model.RedisCartItem;
+import fit.iuh.order.module.cart_management.repository.CartRedisRepository;
 import fit.iuh.order.module.exception.BadRequestException;
 import fit.iuh.order.module.exception.NotFoundException;
-import fit.iuh.order.module.cart_management.repository.CartItemRepository;
-import fit.iuh.order.module.cart_management.repository.CartRepository;
-import java.math.BigDecimal;
-import java.util.Comparator;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class CartService {
-    private final CartRepository cartRepository;
-    private final CartItemRepository cartItemRepository;
+    private final CartRedisRepository cartRedisRepository;
 
-    @Transactional
     public CartResponse addProduct(AddCartItemRequest request) {
-        Cart cart = cartRepository.findByUserId(request.userId())
-            .orElseGet(() -> createCart(request.userId()));
+        RedisCart cart = cartRedisRepository.getCart(request.userId());
+        
+        Optional<RedisCartItem> existingItem = cart.getItems().stream()
+                .filter(item -> item.getBookId().equals(request.bookId()))
+                .findFirst();
 
-        CartItem item = cartItemRepository.findByCartIdAndBookId(cart.getId(), request.bookId())
-            .map(existing -> {
-                existing.setQuantity(existing.getQuantity() + request.quantity());
-                return existing;
-            })
-            .orElseGet(() -> CartItem.builder()
-                .cartId(cart.getId())
-                .bookId(request.bookId())
-                .quantity(request.quantity())
-                .build());
+        if (existingItem.isPresent()) {
+            existingItem.get().setQuantity(existingItem.get().getQuantity() + request.quantity());
+        } else {
+            cart.getItems().add(RedisCartItem.builder()
+                    .bookId(request.bookId())
+                    .quantity(request.quantity())
+                    .build());
+        }
 
-        cartItemRepository.save(item);
+        cartRedisRepository.saveCart(cart);
         return toResponse(cart);
     }
 
-    @Transactional
     public CartResponse removeProduct(RemoveCartItemRequest request) {
-        Cart cart = cartRepository.findByUserId(request.userId())
-            .orElseThrow(() -> new NotFoundException("Cart not found for userId=" + request.userId()));
+        RedisCart cart = cartRedisRepository.getCart(request.userId());
 
-        CartItem item = cartItemRepository.findByCartIdAndBookId(cart.getId(), request.bookId())
-            .orElseThrow(() -> new NotFoundException("Book not found in cart: bookId=" + request.bookId()));
+        RedisCartItem item = cart.getItems().stream()
+                .filter(i -> i.getBookId().equals(request.bookId()))
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException("Book not found in cart: bookId=" + request.bookId()));
 
         if (request.quantity() > item.getQuantity()) {
             throw new BadRequestException("remove quantity exceeds existing quantity");
@@ -58,53 +56,49 @@ public class CartService {
 
         int remaining = item.getQuantity() - request.quantity();
         if (remaining <= 0) {
-            cartItemRepository.delete(item);
+            cart.getItems().remove(item);
         } else {
             item.setQuantity(remaining);
-            cartItemRepository.save(item);
         }
 
+        cartRedisRepository.saveCart(cart);
         return toResponse(cart);
     }
 
-    @Transactional
     public CartResponse updateProductQuantity(UpdateCartItemQuantityRequest request) {
-        Cart cart = cartRepository.findByUserId(request.userId())
-            .orElseThrow(() -> new NotFoundException("Cart not found for userId=" + request.userId()));
+        RedisCart cart = cartRedisRepository.getCart(request.userId());
 
-        CartItem item = cartItemRepository.findByCartIdAndBookId(cart.getId(), request.bookId())
-            .orElseThrow(() -> new NotFoundException("Book not found in cart: bookId=" + request.bookId()));
+        RedisCartItem item = cart.getItems().stream()
+                .filter(i -> i.getBookId().equals(request.bookId()))
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException("Book not found in cart: bookId=" + request.bookId()));
 
         item.setQuantity(request.quantity());
-        cartItemRepository.save(item);
+        cartRedisRepository.saveCart(cart);
 
         return toResponse(cart);
     }
 
-    @Transactional(readOnly = true)
     public CartResponse getCartByUserId(Long userId) {
-        Cart cart = cartRepository.findByUserId(userId)
-            .orElseGet(() -> Cart.builder()
-                .userId(userId)
-                .totalEstimated(BigDecimal.ZERO)
-                .build());
+        RedisCart cart = cartRedisRepository.getCart(userId);
         return toResponse(cart);
     }
 
-    private Cart createCart(Long userId) {
-        Cart cart = Cart.builder()
-            .userId(userId)
-            .totalEstimated(BigDecimal.ZERO)
-            .build();
-        return cartRepository.save(cart);
-    }
+    private CartResponse toResponse(RedisCart cart) {
+        List<CartItemResponse> items = cart.getItems().stream()
+                .map(item -> new CartItemResponse(
+                        item.getBookId(), // id of item mapped to bookId
+                        cart.getUserId(), // cartId mapped to userId
+                        item.getBookId(),
+                        item.getQuantity()
+                ))
+                .toList();
 
-    private CartResponse toResponse(Cart cart) {
-        List<CartItemResponse> items = cartItemRepository.findByCartId(cart.getId()).stream()
-            .sorted(Comparator.comparing(CartItem::getId))
-            .map(item -> new CartItemResponse(item.getId(), item.getCartId(), item.getBookId(), item.getQuantity()))
-            .toList();
-
-        return new CartResponse(cart.getId(), cart.getUserId(), cart.getTotalEstimated(), items);
+        return new CartResponse(
+                cart.getUserId(), // id of cart mapped to userId
+                cart.getUserId(),
+                BigDecimal.ZERO,
+                items
+        );
     }
 }

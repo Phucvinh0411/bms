@@ -2,8 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { ArrowLeft, MapPin, Plus, Sparkles, Star } from 'lucide-react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { ArrowLeft, MapPin, Plus, Sparkles, Star, CreditCard, Banknote, ShieldCheck, CheckCircle2, Loader2, QrCode, Lock, Wallet, ExternalLink, Clock, AlertCircle } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '@/src/auth/context'
 import { getEffectiveUserId } from '@/src/cart/utils/userContext'
@@ -44,14 +44,15 @@ function getErrorMessage(error: unknown, fallback: string) {
       return message
     }
   }
-
   return fallback
 }
 
 export default function CheckoutPage() {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { isSignedIn, isLoading: authLoading } = useAuth()
+  
   const canLoadCheckoutData = !authLoading && isSignedIn
   const [loading, setLoading] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -69,6 +70,18 @@ export default function CheckoutPage() {
 
   const [provinces, setProvinces] = useState<Province[]>([])
   const [districts, setDistricts] = useState<District[]>([])
+
+  // State phương thức thanh toán: COD hoặc PAYOS (VietQR)
+  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'PAYOS'>('PAYOS')
+
+  // Trạng thái Server-Sent Events (SSE) để theo dõi thanh toán thời gian thực
+  const [sseStatus, setSseStatus] = useState<'IDLE' | 'PENDING' | 'PAID' | 'ERROR'>('IDLE')
+  const [sseMessage, setSseMessage] = useState('')
+
+  const statusParam = searchParams.get('status')
+  const orderIdParam = searchParams.get('orderId')
+  const qrCodeParam = searchParams.get('qrCode')
+  const checkoutUrlParam = searchParams.get('checkoutUrl')
 
   const formattedCurrency = useMemo(
     () =>
@@ -104,21 +117,75 @@ export default function CheckoutPage() {
         return results[0]
       }
     }
-
     return null
   }
+
+  // --- LẮNG NGHE SỰ KIỆN THANH TOÁN THỜI GIAN THỰC (SSE) ---
+  useEffect(() => {
+    if (statusParam === 'success' && orderIdParam) {
+      setSseStatus('PENDING')
+      setSseMessage('Đang kết nối tới cổng thanh toán để chờ xác thực chuyển khoản...')
+
+      let sseBase = process.env.NEXT_PUBLIC_ORDER_SERVICE_URL
+      if (!sseBase) {
+        const protocol = window.location.protocol
+        const host = window.location.hostname
+        const port = window.location.port === '3000' ? '' : (window.location.port ? `:${window.location.port}` : '')
+        sseBase = `${protocol}//${host}${port}/api/v1/orders`
+      }
+      const eventSource = new EventSource(`${sseBase}/api/payments/sse/${orderIdParam}`)
+
+      eventSource.addEventListener('INIT', (event: MessageEvent) => {
+        setSseMessage(event.data)
+      })
+
+      eventSource.addEventListener('PAYMENT_STATUS', (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data)
+          if (data.status === 'PAID') {
+            setSseStatus('PAID')
+            setSseMessage('Thành công! Đơn hàng đã được thanh toán. Đang chuyển hướng sang chi tiết đơn hàng...')
+            toast.success('Thanh toán thành công qua VietQR!')
+            setTimeout(() => {
+              router.push(`/order?orderId=${orderIdParam}`)
+            }, 1500)
+          }
+        } catch {
+          if (event.data && event.data.includes('PAID')) {
+            setSseStatus('PAID')
+            setSseMessage('Thành công! Đơn hàng đã được thanh toán. Đang chuyển hướng sang chi tiết đơn hàng...')
+            toast.success('Thanh toán thành công qua VietQR!')
+            setTimeout(() => {
+              router.push(`/order?orderId=${orderIdParam}`)
+            }, 1500)
+          }
+        }
+        eventSource.close()
+      })
+
+      eventSource.onerror = () => {
+        // Fallback nhẹ nếu ngrok đứt kết nối tạm thời hoặc sự cố SSE
+        setSseStatus('ERROR')
+        setSseMessage('Kết nối gián đoạn. Nếu bạn đã chuyển khoản thành công, xin hãy F5 tải lại trang để kiểm tra trạng thái đơn.')
+        eventSource.close()
+      }
+
+      return () => {
+        eventSource.close()
+      }
+    }
+  }, [statusParam, orderIdParam])
 
   useEffect(() => {
     if (!canLoadCheckoutData) {
       return
     }
-
     ;(async () => {
       try {
         const result = await getProvinces()
         setProvinces(result)
       } catch (error: unknown) {
-        toast.error(getErrorMessage(error, 'Khong tai duoc tinh/thanh'))
+        toast.error(getErrorMessage(error, 'Không tải được tỉnh/thành phố'))
       }
     })()
   }, [canLoadCheckoutData])
@@ -127,13 +194,11 @@ export default function CheckoutPage() {
     if (!canLoadCheckoutData) {
       return
     }
-
     const provinceCode = Number(addressForm.provinceCode)
     if (!Number.isFinite(provinceCode) || provinceCode <= 0) {
       setDistricts([])
       return
     }
-
     ;(async () => {
       try {
         const result = await getDistrictsByProvinceCode(provinceCode)
@@ -155,7 +220,7 @@ export default function CheckoutPage() {
       const defaultAddress = list.find((item) => item.isDefault)
       setSelectedAddressId((prev) => prev ?? defaultAddress?.id ?? list[0]?.id ?? null)
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Khong tai duoc danh sach dia chi'))
+      toast.error(getErrorMessage(error, 'Không tải được danh sách địa chỉ'))
     } finally {
       setAddressLoading(false)
     }
@@ -165,7 +230,6 @@ export default function CheckoutPage() {
     if (!canLoadCheckoutData) {
       return
     }
-
     loadAddresses()
   }, [canLoadCheckoutData])
 
@@ -173,7 +237,6 @@ export default function CheckoutPage() {
     if (!canLoadCheckoutData) {
       return
     }
-
     ;(async () => {
       try {
         const userId = getEffectiveUserId()
@@ -232,7 +295,7 @@ export default function CheckoutPage() {
   async function handleSaveAddress() {
     const userId = getEffectiveUserId()
     if (!userId) {
-      toast.error('Khong tim thay userId')
+      toast.error('Không tìm thấy mã người dùng')
       return
     }
 
@@ -242,12 +305,12 @@ export default function CheckoutPage() {
     const district = districts.find((item) => item.code === districtCode)
 
     if (!addressForm.recipientName.trim() || !addressForm.phoneNumber.trim() || !addressForm.detailAddress.trim()) {
-      toast.error('Vui long nhap day du thong tin dia chi')
+      toast.error('Vui lòng nhập đầy đủ thông tin địa chỉ')
       return
     }
 
     if (!province || !district) {
-      toast.error('Vui long chon tinh/thanh va quan/huyen')
+      toast.error('Vui lòng chọn tỉnh/thành và quận/huyện')
       return
     }
 
@@ -256,9 +319,8 @@ export default function CheckoutPage() {
     setLoading(true)
     try {
       const best = await resolveCoordinates(district.name, province.name)
-
       if (!best) {
-        throw new Error('Khong tim thay toa do theo huyen/tinh. Vui long thu huyen/tinh khac.')
+        throw new Error('Không tìm thấy tọa độ. Vui lòng thử quận/huyện khác.')
       }
 
       const payload: ShippingAddressRequest = {
@@ -275,12 +337,12 @@ export default function CheckoutPage() {
         ? await updateShippingAddress(editingAddressId, payload)
         : await createShippingAddress(payload)
 
-      toast.success(editingAddressId ? 'Da cap nhat dia chi' : 'Da them dia chi moi')
+      toast.success(editingAddressId ? 'Đã cập nhật địa chỉ thành công' : 'Đã thêm địa chỉ giao hàng mới')
       setShowAddressForm(false)
       await loadAddresses()
       setSelectedAddressId(saved.id)
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Khong luu duoc dia chi'))
+      toast.error(getErrorMessage(error, 'Lưu địa chỉ giao hàng thất bại'))
     } finally {
       setLoading(false)
     }
@@ -295,9 +357,9 @@ export default function CheckoutPage() {
       await setDefaultShippingAddress(addressId, userId)
       await loadAddresses()
       setSelectedAddressId(addressId)
-      toast.success('Da dat dia chi mac dinh')
+      toast.success('Đã chọn địa chỉ làm mặc định')
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Khong dat duoc mac dinh'))
+      toast.error(getErrorMessage(error, 'Đổi địa chỉ mặc định thất bại'))
     } finally {
       setLoading(false)
     }
@@ -311,9 +373,9 @@ export default function CheckoutPage() {
     try {
       await deleteShippingAddress(addressId, userId)
       await loadAddresses()
-      toast.success('Da xoa dia chi')
+      toast.success('Xóa địa chỉ giao hàng thành công')
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Khong xoa duoc dia chi'))
+      toast.error(getErrorMessage(error, 'Xóa địa chỉ thất bại'))
     } finally {
       setLoading(false)
     }
@@ -322,12 +384,12 @@ export default function CheckoutPage() {
   const buildCheckoutPayload = useCallback((): CheckoutRequest | null => {
     const userId = getEffectiveUserId()
     if (!userId) {
-      toast.error('Khong tim thay userId')
+      toast.error('Không tìm thấy mã người dùng')
       return null
     }
 
     if (!selectedAddressId) {
-      toast.error('Vui long chon dia chi giao hang')
+      toast.error('Vui lòng chọn địa chỉ giao nhận sách')
       return null
     }
 
@@ -353,7 +415,7 @@ export default function CheckoutPage() {
         const data = await previewCheckout(payload)
         setPreview(data)
       } catch {
-        // silent: user can still trigger manual preview to see explicit error
+        // silent: preview tự động tải lại khi đổi địa chỉ hoặc voucher
       } finally {
         setPreviewLoading(false)
       }
@@ -362,17 +424,33 @@ export default function CheckoutPage() {
     return () => window.clearTimeout(timer)
   }, [selectedAddressId, voucherCode, canLoadCheckoutData, buildCheckoutPayload])
 
+  // --- XỬ LÝ THANH TOÁN VÀ ĐẶT HÀNG ---
   async function handleCheckout() {
     const payload = buildCheckoutPayload()
     if (!payload) return
 
+    // Đính kèm phương thức thanh toán được chọn cùng URL chuyển hướng động
+    const finalPayload = {
+      ...payload,
+      paymentMethod,
+      returnUrl: `${window.location.origin}/checkout?status=success`,
+      cancelUrl: `${window.location.origin}/cart`,
+    }
+
     setLoading(true)
     try {
-      const data = await submitCheckout(payload)
-      toast.success(`Dat hang thanh cong #${data.id}`)
-      setPreview(data)
+      const data = await submitCheckout(finalPayload)
+      
+      if (paymentMethod === 'PAYOS' && data.checkoutUrl) {
+        toast.success('Đã tạo mã QR thanh toán thành công!')
+        router.push(`/checkout?status=success&orderId=${data.id}&qrCode=${encodeURIComponent(data.qrCode || '')}&checkoutUrl=${encodeURIComponent(data.checkoutUrl || '')}`)
+      } else {
+        toast.success(`Đặt hàng thành công! Mã đơn hàng: #${data.id}`)
+        setPreview(data)
+        router.push(`/order?orderId=${data.id}`)
+      }
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Thanh toan that bai'))
+      toast.error(getErrorMessage(error, 'Quá trình đặt hàng thất bại'))
     } finally {
       setLoading(false)
     }
@@ -388,10 +466,228 @@ export default function CheckoutPage() {
     )
   }
 
+  // --- RENDERING MÀN HÌNH SSE KIỂM TRA THANH TOÁN THỰC TẾ ---
+  if (statusParam === 'success' && orderIdParam) {
+    const isCOD = searchParams.get('method') === 'COD'
+
+    return (
+      <div className="min-h-[calc(100vh-84px)] bg-[radial-gradient(circle_at_top,_#fff8ed_0%,_#fbfcfd_50%,_#eef2f7_100%)] flex items-center justify-center p-4 sm:p-6">
+        <style dangerouslySetInnerHTML={{__html: `
+          @keyframes scanLine {
+            0%, 100% { top: 0%; opacity: 0.4; }
+            50% { top: 100%; opacity: 1; }
+          }
+          @keyframes pulseGlow {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.03); }
+          }
+          .laser-scanner {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #f59e0b, #ef4444, #f59e0b, transparent);
+            box-shadow: 0 0 12px 3px rgba(245, 158, 11, 0.8);
+            animation: scanLine 3.2s ease-in-out infinite;
+          }
+          .glow-ring {
+            animation: pulseGlow 2s ease-in-out infinite;
+          }
+        `}} />
+
+        <div className="w-full max-w-xl rounded-[32px] border border-[#e7dfd1] bg-white/95 p-6 sm:p-10 text-center shadow-[0_32px_64px_rgba(106,78,32,0.14)] backdrop-blur transition-all duration-300">
+          
+          {/* TIẾN TRÌNH THANH TOÁN (STEPS) */}
+          <div className="mb-8 flex items-center justify-center gap-2 text-xs font-semibold text-slate-500">
+            <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[10px] text-white font-bold">1</span>
+              <span>Đơn hàng</span>
+            </div>
+            <div className="h-[1px] w-8 bg-slate-200"></div>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${!isCOD && sseStatus === 'PENDING' ? 'text-amber-700 bg-amber-50 border border-amber-200 font-bold' : 'text-emerald-600 bg-emerald-50 border border-emerald-100'}`}>
+              <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ${!isCOD && sseStatus === 'PENDING' ? 'bg-amber-500' : 'bg-emerald-500'}`}>2</span>
+              <span>Thanh toán</span>
+            </div>
+            <div className="h-[1px] w-8 bg-slate-200"></div>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${sseStatus === 'PAID' ? 'text-emerald-700 bg-emerald-50 border border-emerald-200 font-bold' : 'text-slate-400 bg-slate-50 border border-slate-200/50'}`}>
+              <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ${sseStatus === 'PAID' ? 'bg-emerald-500' : 'bg-slate-300'}`}>3</span>
+              <span>Hoàn tất</span>
+            </div>
+          </div>
+
+          {/* GIAO DIỆN CHỜ THANH TOÁN (PAYOS + SSE) */}
+          {!isCOD && sseStatus === 'PENDING' && (
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800 border border-amber-200 animate-pulse">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                  Giao dịch đang đồng bộ
+                </span>
+                <h2 className="text-3xl font-black text-slate-800 tracking-tight" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>
+                  Quét Mã VietQR
+                </h2>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                  Vui lòng sử dụng ứng dụng Ngân hàng (Mobile Banking) quét mã QR bên dưới để hoàn tất giao dịch tự động.
+                </p>
+              </div>
+
+              {/* QR Code Container with High-Tech Laser Scanning Line */}
+              {qrCodeParam && (
+                <div className="relative mx-auto my-6 w-64 h-64 bg-slate-50 p-3 rounded-[28px] border-2 border-dashed border-slate-200 shadow-[0_12px_36px_rgba(0,0,0,0.04)] flex items-center justify-center overflow-hidden group">
+                  {/* Glowing ambient background */}
+                  <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/5 to-red-500/5 glow-ring" />
+                  
+                  {/* High-tech Scanning Laser Bar */}
+                  <div className="laser-scanner" />
+
+                  {/* Corner accents */}
+                  <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-amber-500 rounded-tl-lg" />
+                  <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-amber-500 rounded-tr-lg" />
+                  <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-amber-500 rounded-bl-lg" />
+                  <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-amber-500 rounded-br-lg" />
+
+                  {/* QR Image */}
+                  <div className="relative z-10 w-full h-full bg-white p-2 rounded-2xl">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrCodeParam)}`}
+                      alt="VietQR PayOS"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* simulated payment timer */}
+              <div className="flex items-center justify-center gap-1.5 text-xs text-slate-500 font-medium">
+                <Clock size={14} className="text-amber-600" />
+                <span>Mã QR hết hạn trong: <span className="font-bold text-amber-600">14:59s</span></span>
+              </div>
+
+              {/* TRANSACTION DETAILS CARD */}
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-left shadow-sm space-y-2">
+                <div className="flex justify-between text-xs border-b border-slate-100 pb-2">
+                  <span className="text-slate-400">Đơn hàng:</span>
+                  <span className="font-bold text-slate-800">#{orderIdParam}</span>
+                </div>
+                <div className="flex justify-between text-xs border-b border-slate-100 pb-2">
+                  <span className="text-slate-400">Số tiền chuyển khoản:</span>
+                  <span className="font-bold text-emerald-600 text-sm">1.000 VND</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Nội dung chuyển khoản:</span>
+                  <span className="font-mono font-bold text-amber-800 text-[11px] bg-amber-50/80 px-2 py-0.5 rounded border border-amber-100">
+                    CSGWHB3JJI5 Thanh toan don hang {orderIdParam}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center gap-3">
+                {checkoutUrlParam && (
+                  <a
+                    href={checkoutUrlParam}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-sm hover:shadow active:scale-95"
+                  >
+                    <ExternalLink size={13} className="text-slate-500" />
+                    Mở cổng thanh toán PayOS Portal
+                  </a>
+                )}
+                
+                <div className="flex items-center gap-2 justify-center text-xs text-emerald-600 font-bold animate-pulse mt-1">
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>Đang chờ xác nhận thanh toán trực tuyến tự động...</span>
+                </div>
+              </div>
+              
+              <div className="rounded-2xl bg-amber-50/40 p-4 border border-amber-100/60 text-left">
+                <div className="flex items-start gap-2.5">
+                  <ShieldCheck className="mt-0.5 text-amber-700 shrink-0" size={18} />
+                  <p className="text-xs font-semibold text-amber-800 leading-relaxed">{sseMessage}</p>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-400">
+                <p>🔒 Kết nối SSL an toàn tuyệt đối. PayOS được chứng nhận bảo mật PCI DSS Level 1.</p>
+              </div>
+            </div>
+          )}
+
+          {/* GIAO DIỆN THANH TOÁN THÀNH CÔNG (SSE kích hoạt) */}
+          {(isCOD || sseStatus === 'PAID') && (
+            <div className="space-y-8 animate-fade-in py-4">
+              <div className="relative mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 border border-emerald-100 shadow-[0_20px_40px_rgba(16,185,129,0.15)] group">
+                <div className="absolute inset-0 bg-emerald-400/10 rounded-full animate-ping pointer-events-none" />
+                <CheckCircle2 size={48} className="relative z-10 animate-bounce" />
+              </div>
+              
+              <div className="space-y-2">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>
+                  Đặt Hàng Thành Công!
+                </h2>
+                <p className="text-xs text-emerald-600 font-bold uppercase tracking-widest">Hệ thống đã nhận được thanh toán</p>
+              </div>
+              
+              <div className="rounded-3xl bg-emerald-50/20 p-6 border border-emerald-100 text-left space-y-3.5 text-sm text-slate-700 shadow-sm max-w-sm mx-auto">
+                <div className="flex justify-between items-center"><span className="text-slate-400 text-xs">Mã hóa đơn:</span><span className="font-bold text-slate-900 bg-white px-2.5 py-0.5 rounded-full border border-slate-100">#{orderIdParam}</span></div>
+                <div className="flex justify-between items-center"><span className="text-slate-400 text-xs">Phương thức:</span><span className="font-semibold text-slate-900">{isCOD ? 'Nhận hàng COD' : 'Chuyển khoản VietQR'}</span></div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 text-xs">Trạng thái đơn:</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+                    {isCOD ? 'CHỜ XỬ LÝ (COD)' : 'ĐÃ THANH TOÁN'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="pt-2 flex flex-col gap-2 max-w-sm mx-auto">
+                <button onClick={() => router.push(`/order?orderId=${orderIdParam}`)} className="w-full rounded-full bg-slate-900 py-3 text-sm font-bold uppercase tracking-widest text-white hover:bg-slate-800 shadow-lg active:scale-[0.98] transition">
+                  Xem chi tiết đơn hàng
+                </button>
+                <button onClick={() => router.push('/order')} className="w-full rounded-full border border-slate-200 bg-white py-3 text-sm font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition">
+                  Danh sách đơn hàng
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* GIAO DIỆN LỖI KẾT NỐI */}
+          {sseStatus === 'ERROR' && (
+            <div className="space-y-6 py-4">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-rose-50 text-rose-500 border border-rose-100 shadow-[0_16px_32px_rgba(244,63,94,0.15)]">
+                <AlertCircle size={40} className="animate-pulse" />
+              </div>
+              
+              <div className="space-y-2">
+                <h2 className="text-2xl font-bold text-slate-800" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>
+                  Kết nối gián đoạn
+                </h2>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">{sseMessage}</p>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-2 pt-2 max-w-sm mx-auto">
+                <button onClick={() => window.location.reload()} className="flex-1 rounded-full bg-amber-600 py-3 text-sm font-semibold uppercase tracking-wide text-white hover:bg-amber-500 shadow-md">
+                  Tải lại trang (F5)
+                </button>
+                <button onClick={() => router.push('/')} className="flex-1 rounded-full border border-slate-300 py-3 text-sm font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-50">
+                  Về trang chủ
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // --- RENDERING GIAO DIỆN CHECKOUT CHÍNH ---
   return (
     <div className="min-h-[calc(100vh-84px)] bg-[radial-gradient(circle_at_top,_#fff5e6_0%,_#f8fafc_40%,_#e9eef6_100%)] px-4 py-8 sm:px-8">
       <div className="mx-auto grid w-full max-w-[1240px] gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+        
         <section className="rounded-3xl border border-[#e7dfd1] bg-white/85 p-6 shadow-[0_18px_40px_rgba(106,78,32,0.12)] backdrop-blur">
+          
+          {/* Header */}
           <div className="mb-6 flex items-start justify-between">
             <div>
               <p className="text-sm uppercase tracking-[0.3em] text-[#a28354]">Thanh toán</p>
@@ -406,6 +702,7 @@ export default function CheckoutPage() {
             </Link>
           </div>
 
+          {/* Danh Sách Địa Chỉ */}
           <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-[#fff9ef] to-white p-4">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
@@ -418,9 +715,9 @@ export default function CheckoutPage() {
               </button>
             </div>
 
-            {addressLoading && <p className="text-sm text-slate-500">Đang tải...</p>}
+            {addressLoading && <p className="text-sm text-slate-500">Đang tải địa chỉ...</p>}
             {!addressLoading && addresses.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Vui lòng thêm địa chỉ.</div>
+              <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Vui lòng thêm địa chỉ nhận hàng.</div>
             )}
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -435,7 +732,7 @@ export default function CheckoutPage() {
                     <p className="mt-1 text-xs text-slate-500">{item.phoneNumber}</p>
                     <p className="mt-2 line-clamp-2 text-sm text-slate-700">{item.addressLine}</p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                      {!item.isDefault && <span onClick={(e) => { e.stopPropagation(); handleSetDefault(item.id) }} className="cursor-pointer rounded-full border border-emerald-300 px-2 py-1 text-emerald-700">Đặt làm mặc định</span>}
+                      {!item.isDefault && <span onClick={(e) => { e.stopPropagation(); handleSetDefault(item.id) }} className="cursor-pointer rounded-full border border-emerald-300 px-2 py-1 text-emerald-700">Đặt mặc định</span>}
                       <span onClick={(e) => { e.stopPropagation(); openEditForm(item) }} className="cursor-pointer rounded-full border border-slate-300 px-2 py-1 text-slate-700">Sửa</span>
                       <span onClick={(e) => { e.stopPropagation(); handleDeleteAddress(item.id) }} className="cursor-pointer rounded-full border border-rose-300 px-2 py-1 text-rose-700">Xóa</span>
                     </div>
@@ -445,12 +742,13 @@ export default function CheckoutPage() {
             </div>
           </div>
 
+          {/* Form Thêm/Sửa Địa Chỉ */}
           {showAddressForm && (
             <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-800">{editingAddressId ? 'Cập nhật địa chỉ' : 'Địa chỉ mới'}</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-800">{editingAddressId ? 'Cập nhật địa chỉ' : 'Thêm địa chỉ mới'}</h3>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <input value={addressForm.recipientName} onChange={(e) => setAddressForm((p) => ({ ...p, recipientName: e.target.value }))} placeholder="Nguoi nhan" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400" />
-                <input value={addressForm.phoneNumber} onChange={(e) => setAddressForm((p) => ({ ...p, phoneNumber: e.target.value }))} placeholder="So dien thoai" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400" />
+                <input value={addressForm.recipientName} onChange={(e) => setAddressForm((p) => ({ ...p, recipientName: e.target.value }))} placeholder="Tên người nhận" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400" />
+                <input value={addressForm.phoneNumber} onChange={(e) => setAddressForm((p) => ({ ...p, phoneNumber: e.target.value }))} placeholder="Số điện thoại" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400" />
                 <select
                   value={addressForm.provinceCode}
                   onChange={(e) => setAddressForm((p) => ({ ...p, provinceCode: e.target.value, districtCode: '' }))}
@@ -476,26 +774,82 @@ export default function CheckoutPage() {
               <input
                 value={addressForm.detailAddress}
                 onChange={(e) => setAddressForm((p) => ({ ...p, detailAddress: e.target.value }))}
-                placeholder="So nha, duong, xa/phuong"
+                placeholder="Số nhà, tên đường, xã/phường..."
                 className="mt-3 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400"
               />
 
               <div className="mt-3 flex gap-2">
-                <button type="button" onClick={handleSaveAddress} className="rounded-full bg-amber-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-amber-500">Luu dia chi</button>
-                <button type="button" onClick={() => setShowAddressForm(false)} className="rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700">Dong</button>
+                <button type="button" onClick={handleSaveAddress} className="rounded-full bg-amber-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-amber-500">Lưu địa chỉ</button>
+                <button type="button" onClick={() => setShowAddressForm(false)} className="rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700">Đóng</button>
               </div>
             </div>
           )}
 
-          <div className="mt-6 rounded-2xl border border-dashed border-amber-200 bg-amber-50/70 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-amber-700"><Sparkles size={16} />Voucher</div>
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-              <input value={voucherCode} onChange={(event) => setVoucherCode(event.target.value)} placeholder="Nhập mã giảm giá" className="w-full flex-1 rounded-full border border-amber-200 bg-white px-4 py-2 text-sm text-slate-800 shadow-sm focus:border-amber-400 focus:outline-none" />
+          {/* VÙNG CHỌN PHƯƠNG THỨC THANH TOÁN (PREMIUM DESIGN) */}
+          <div className="mt-8 rounded-2xl border border-slate-200 bg-[#fafcfd] p-5">
+            <h3 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <CreditCard size={18} className="text-slate-700" />
+              Phương thức thanh toán
+            </h3>
+            
+            <div className="grid gap-3 sm:grid-cols-2">
+              {/* Option PayOS VietQR */}
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('PAYOS')}
+                className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition-all ${
+                  paymentMethod === 'PAYOS'
+                    ? 'border-amber-500 bg-amber-50/40 shadow-sm ring-1 ring-amber-400'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className={`mt-0.5 rounded-full p-2 ${paymentMethod === 'PAYOS' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                  <Sparkles size={18} className={paymentMethod === 'PAYOS' ? 'animate-pulse' : ''} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold text-slate-900">Quét mã VietQR (PayOS)</span>
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">TỰ ĐỘNG</span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                    Xử lý tự động ngay khi chuyển tiền 1k thực. An toàn và không mất thời gian chờ đợi.
+                  </p>
+                </div>
+              </button>
+
+              {/* Option COD */}
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('COD')}
+                className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition-all ${
+                  paymentMethod === 'COD'
+                    ? 'border-amber-500 bg-amber-50/40 shadow-sm ring-1 ring-amber-400'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className={`mt-0.5 rounded-full p-2 ${paymentMethod === 'COD' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                  <Banknote size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-semibold text-slate-900">Thanh toán khi nhận hàng (COD)</span>
+                  <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                    Nhận sách tận nơi, kiểm tra hàng đầy đủ rồi mới gửi tiền mặt cho shipper.
+                  </p>
+                </div>
+              </button>
             </div>
-            {/* <p className="mt-2 text-xs text-amber-700">Phi ship va tong tien tu dong cap nhat khi ban doi dia chi hoac voucher.</p> */}
+          </div>
+
+          {/* Voucher */}
+          <div className="mt-6 rounded-2xl border border-dashed border-amber-200 bg-amber-50/70 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-amber-700"><Sparkles size={16} />Voucher giảm giá</div>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+              <input value={voucherCode} onChange={(event) => setVoucherCode(event.target.value)} placeholder="Nhập mã giảm giá của bạn" className="w-full flex-1 rounded-full border border-amber-200 bg-white px-4 py-2 text-sm text-slate-800 shadow-sm focus:border-amber-400 focus:outline-none" />
+            </div>
           </div>
         </section>
 
+        {/* Aside bill review */}
         <aside className="space-y-6">
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900" style={{ fontFamily: '"Space Grotesk", "Trebuchet MS", sans-serif' }}>Hóa đơn tạm tính</h2>
@@ -505,18 +859,20 @@ export default function CheckoutPage() {
               <div className="flex items-center justify-between"><span>Giảm phí ship</span><span className="font-semibold text-emerald-600">-{formattedCurrency.format(preview?.shippingDiscount ?? 0)}</span></div>
               <div className="flex items-center justify-between"><span>Khuyến mãi</span><span className="font-semibold text-emerald-600">-{formattedCurrency.format(preview?.orderDiscount ?? 0)}</span></div>
               <div className="mt-4 flex items-center justify-between border-t border-dashed border-slate-200 pt-4 text-base font-semibold text-slate-900"><span>Tổng thanh toán</span><span>{formattedCurrency.format(preview?.finalTotal ?? 0)}</span></div>
-              {previewLoading && <div className="text-xs text-slate-500">Đang cập nhật...</div>}
+              {previewLoading && <div className="text-xs text-slate-500">Đang tính toán lại hóa đơn...</div>}
             </div>
 
             <div className="mt-6 space-y-3">
-              <button type="button" onClick={handleCheckout} disabled={loading || !selectedAddress} className="w-full rounded-full bg-slate-900 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70">{loading ? 'Đang xử lý...' : 'Tiến hành thanh toán'}</button>
+              <button type="button" onClick={handleCheckout} disabled={loading || !selectedAddress} className="w-full rounded-full bg-slate-900 py-3 text-sm font-semibold uppercase tracking-widest text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70">
+                {loading ? 'Đang tạo đơn hàng...' : paymentMethod === 'PAYOS' ? 'Đặt hàng & Thanh toán QR' : 'Đặt hàng COD'}
+              </button>
             </div>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-[#111827] via-[#1f2937] to-[#334155] p-6 text-white shadow-[0_18px_40px_rgba(15,23,42,0.35)]">
             <p className="text-xs uppercase tracking-[0.3em] text-amber-200">Địa chỉ giao hàng</p>
-            <h3 className="mt-2 text-xl font-semibold" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>{selectedAddress?.recipientName ?? 'Chua chon'}</h3>
-            <p className="mt-2 text-sm text-slate-200">{selectedAddress?.addressLine ?? 'Vui long them hoac chon dia chi de tiep tuc.'}</p>
+            <h3 className="mt-2 text-xl font-semibold" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>{selectedAddress?.recipientName ?? 'Chưa chọn địa chỉ'}</h3>
+            <p className="mt-2 text-sm text-slate-200">{selectedAddress?.addressLine ?? 'Vui lòng thêm hoặc chọn địa chỉ nhận sách ở cột bên để tiếp tục.'}</p>
             <p className="mt-3 text-xs text-slate-300">{selectedAddress ? selectedAddress.phoneNumber : ''}</p>
           </div>
         </aside>
