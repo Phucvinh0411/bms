@@ -8,6 +8,8 @@ import java.util.List;
 @Service
 public class HybridSearchService {
 
+    private static final int TOP_K_CANDIDATES = 20;
+
     private final SemanticEmbeddingService semanticEmbeddingService;
     private final BookSemanticRepository bookSemanticRepository;
 
@@ -25,21 +27,40 @@ public class HybridSearchService {
                                                     BigDecimal maxPrice) {
         int safeLimit = limit > 0 ? limit : 10;
         int safeOffset = Math.max(offset, 0);
+        int candidateLimit = Math.max(TOP_K_CANDIDATES, safeOffset + safeLimit);
 
         try {
             float[] embedding = semanticEmbeddingService.generateEmbedding(query);
             String vectorLiteral = semanticEmbeddingService.toVectorLiteral(embedding);
-            return bookSemanticRepository.hybridSearch(vectorLiteral, query, safeLimit, safeOffset, categoryIdsCsv, minPrice, maxPrice)
+            return sliceTopK(
+                bookSemanticRepository.hybridSearch(vectorLiteral, query, candidateLimit, 0, categoryIdsCsv, minPrice, maxPrice),
+                safeOffset,
+                safeLimit
+            )
                 .stream()
                 .map(this::toDto)
                 .toList();
         } catch (Exception e) {
             // Ollama unavailable: fallback to keyword/text search
-            return bookSemanticRepository.textSearch(query, safeLimit, safeOffset, categoryIdsCsv, minPrice, maxPrice)
+            System.out.println("Falling back to keyword/text search for query: " + query + " due to error: " + e.getMessage());
+            return sliceTopK(
+                bookSemanticRepository.textSearch(query, candidateLimit, 0, categoryIdsCsv, minPrice, maxPrice),
+                safeOffset,
+                safeLimit
+            )
                 .stream()
                 .map(this::toDto)
                 .toList();
         }
+    }
+
+    private <T> List<T> sliceTopK(List<T> rankedBooks, int offset, int limit) {
+        if (rankedBooks.isEmpty() || offset >= rankedBooks.size()) {
+            return List.of();
+        }
+
+        int toIndex = Math.min(offset + limit, rankedBooks.size());
+        return rankedBooks.subList(offset, toIndex);
     }
 
     private SemanticBookSearchDTO toDto(SemanticBookSearchProjection book) {

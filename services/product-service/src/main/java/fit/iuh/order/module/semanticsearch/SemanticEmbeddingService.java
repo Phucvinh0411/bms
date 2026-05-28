@@ -17,6 +17,7 @@ public class SemanticEmbeddingService {
         @Value("${ollama.base-url:http://ai-engine:11434}") String baseUrl,
         @Value("${ollama.embedding.model:granite-embedding-311m-multilingual-r2}") String embeddingModel
     ) {
+        System.out.println("Initializing SemanticEmbeddingService with Ollama base URL: " + baseUrl + " and embedding model: " + embeddingModel);
         this.restClient = RestClient.builder()
             .baseUrl(baseUrl)
             .build();
@@ -24,23 +25,36 @@ public class SemanticEmbeddingService {
     }
 
     public float[] generateEmbedding(String text) {
-        OllamaEmbeddingResponse response = restClient.post()
-            .uri("/api/embeddings")
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(new OllamaEmbeddingRequest(embeddingModel, text))
-            .retrieve()
-            .body(OllamaEmbeddingResponse.class);
+        OllamaEmbeddingRequest request = new OllamaEmbeddingRequest(embeddingModel, text);
+        OllamaEmbeddingResponse response = callEmbeddingEndpoint("/api/embed", request);
 
-        if (response == null || response.embedding() == null || response.embedding().isEmpty()) {
+        if (response == null || !response.hasEmbedding()) {
+            response = callEmbeddingEndpoint("/api/embeddings", request);
+        }
+
+        if (response == null || !response.hasEmbedding()) {
             throw new IllegalStateException("Ollama did not return an embedding");
         }
 
         List<Double> embedding = response.embedding();
+        if (embedding == null || embedding.isEmpty()) {
+            embedding = response.embeddings().getFirst();
+        }
+
         float[] vector = new float[embedding.size()];
         for (int i = 0; i < embedding.size(); i++) {
             vector[i] = embedding.get(i).floatValue();
         }
         return vector;
+    }
+
+    private OllamaEmbeddingResponse callEmbeddingEndpoint(String path, OllamaEmbeddingRequest request) {
+        return restClient.post()
+            .uri(path)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(request)
+            .retrieve()
+            .body(OllamaEmbeddingResponse.class);
     }
 
     public String toVectorLiteral(float[] vector) {
@@ -55,9 +69,16 @@ public class SemanticEmbeddingService {
         return builder.toString();
     }
 
-    private record OllamaEmbeddingRequest(String model, String prompt) {
+    private record OllamaEmbeddingRequest(String model, String input) {
     }
 
-    private record OllamaEmbeddingResponse(List<Double> embedding) {
+    private record OllamaEmbeddingResponse(List<Double> embedding, List<List<Double>> embeddings) {
+        boolean hasEmbedding() {
+            if (embedding != null && !embedding.isEmpty()) {
+                return true;
+            }
+
+            return embeddings != null && !embeddings.isEmpty() && embeddings.getFirst() != null && !embeddings.getFirst().isEmpty();
+        }
     }
 }
