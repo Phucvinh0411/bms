@@ -3,6 +3,17 @@ import axios, { AxiosInstance, AxiosError } from "axios";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost/api/v1/identity";
 
+type AuthTokens = {
+  accessToken: string | null;
+  refreshToken: string | null;
+};
+
+type AuthSyncListener = (tokens: AuthTokens | null) => void;
+
+let currentAccessToken: string | null = null;
+let currentRefreshToken: string | null = null;
+let authSyncListener: AuthSyncListener | null = null;
+
 class ApiClient {
   private instance: AxiosInstance;
 
@@ -30,7 +41,7 @@ class ApiClient {
     // Request interceptor
     this.instance.interceptors.request.use(
       (config) => {
-        const token = localStorage.getItem("access_token");
+        const token = currentAccessToken;
         if (
           token &&
           !config.url?.includes("/auth/login") &&
@@ -57,7 +68,7 @@ class ApiClient {
           originalRequest._retry = true;
 
           try {
-            const storedRefreshToken = localStorage.getItem("refresh_token");
+            const storedRefreshToken = currentRefreshToken;
             if (!storedRefreshToken) {
               throw new Error("No refresh token found");
             }
@@ -71,13 +82,13 @@ class ApiClient {
             };
 
             this.setTokens(accessToken, refreshToken);
+            authSyncListener?.({ accessToken, refreshToken });
             originalRequest.headers.Authorization = `Bearer ${accessToken}`;
             return this.instance(originalRequest);
           } catch (refreshError) {
             // Refresh failed, clear tokens and redirect to login
-            localStorage.removeItem("access_token");
-            localStorage.removeItem("refresh_token");
-            localStorage.removeItem("user");
+            this.clearTokens();
+            authSyncListener?.(null);
             // Redirect to login
             window.location.href = "/auth/login";
             return Promise.reject(refreshError);
@@ -90,17 +101,48 @@ class ApiClient {
   }
 
   setAccessToken(token: string) {
-    localStorage.setItem("access_token", token);
+    currentAccessToken = token;
   }
 
   setTokens(accessToken: string, refreshToken: string) {
-    localStorage.setItem("access_token", accessToken);
-    localStorage.setItem("refresh_token", refreshToken);
+    currentAccessToken = accessToken;
+    currentRefreshToken = refreshToken;
+  }
+
+  clearTokens() {
+    currentAccessToken = null;
+    currentRefreshToken = null;
   }
 
   getClient() {
     return this.instance;
   }
+}
+
+export function setAuthToken(token: string | null) {
+  currentAccessToken = token;
+}
+
+export function setRefreshToken(token: string | null) {
+  currentRefreshToken = token;
+}
+
+export function setAuthTokens(accessToken: string | null, refreshToken: string | null) {
+  currentAccessToken = accessToken;
+  currentRefreshToken = refreshToken;
+}
+
+export function clearAuthTokens() {
+  currentAccessToken = null;
+  currentRefreshToken = null;
+}
+
+export function getAuthToken() {
+  return currentAccessToken;
+}
+
+export function setAuthSyncListener(listener: AuthSyncListener | null) {
+  authSyncListener = listener;
 }
 
 export const apiClient = new ApiClient();

@@ -1,5 +1,6 @@
 import axios from "axios";
 import type { ShippingAddress, ShippingAddressRequest } from "@/src/checkout/types";
+import { getAuthToken } from "./client";
 
 const configuredBase = process.env.NEXT_PUBLIC_ORDER_SERVICE_URL || process.env.BACKEND_API_BASE_URL;
 const DEFAULT_BASES = ["http://localhost/api/v1/orders"];
@@ -24,7 +25,7 @@ function buildShippingAddressBase(base: string) {
 }
 
 function getAuthHeaders() {
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getAuthToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;

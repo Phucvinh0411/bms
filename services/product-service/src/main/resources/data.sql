@@ -1,3 +1,7 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+ALTER TABLE books ADD COLUMN IF NOT EXISTS embedding vector(768);
+ALTER TABLE books ADD COLUMN IF NOT EXISTS fts_tokens tsvector;
+
 -- 1. Insert Parent Categories
 INSERT INTO categories (id, name, parent_id) VALUES
 (1, 'Sách văn học', NULL),

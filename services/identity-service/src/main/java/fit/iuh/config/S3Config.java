@@ -22,11 +22,19 @@ public class S3Config {
 
     @Bean
     public S3Client s3Client() {
+        String resolvedAccessKey = hasText(accessKey) ? accessKey : "local-dev-access-key";
+        String resolvedSecretKey = hasText(secretKey) ? secretKey : "local-dev-secret-key";
+        String resolvedRegion = hasText(region) ? region : "ap-southeast-1";
+
         return S3Client.builder()
-                .region(Region.of(region))
+                .region(Region.of(resolvedRegion))
                 .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKey, secretKey)
+                        AwsBasicCredentials.create(resolvedAccessKey, resolvedSecretKey)
                 ))
                 .build();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

@@ -13,6 +13,7 @@ EOSQL
 
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$database" <<-EOSQL
         GRANT ALL ON SCHEMA public TO $database;
+        CREATE EXTENSION IF NOT EXISTS vector;
 EOSQL
 }
 

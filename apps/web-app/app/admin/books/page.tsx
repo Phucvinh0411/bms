@@ -102,12 +102,14 @@ export default function AdminBooksPage() {
       });
     }
 
-    if (filterStatus === 'low') {
-      result = result.filter(b => (b.stockQuantity ?? 0) <= 10);
+    if (filterStatus === 'deleted') {
+      result = result.filter(b => b.isDeleted);
+    } else if (filterStatus === 'low') {
+      result = result.filter(b => !b.isDeleted && (b.stockQuantity ?? 0) > 0 && (b.stockQuantity ?? 0) <= 10);
     } else if (filterStatus === 'available') {
-      result = result.filter(b => (b.stockQuantity ?? 0) > 0);
+      result = result.filter(b => !b.isDeleted && (b.stockQuantity ?? 0) > 10);
     } else if (filterStatus === 'out') {
-      result = result.filter(b => (b.stockQuantity ?? 0) === 0);
+      result = result.filter(b => !b.isDeleted && (b.stockQuantity ?? 0) === 0);
     }
 
     return result;
@@ -128,8 +130,8 @@ export default function AdminBooksPage() {
     setDeleting(true);
     try {
       await bookService.deleteBook(id);
-      setBooks(prev => prev.filter(b => b.id !== id));
-      setMessage({ type: 'success', text: 'Đã xóa sách thành công!' });
+      setBooks(prev => prev.map(b => b.id === id ? { ...b, isDeleted: true } : b));
+      setMessage({ type: 'success', text: 'Đã ngừng kinh doanh sách thành công!' });
       setTimeout(() => setMessage(null), 3000);
     } catch (err) {
       console.error('Error deleting book:', err);
@@ -147,6 +149,7 @@ export default function AdminBooksPage() {
   };
 
   const getStatusBadge = (book: Book) => {
+    if (book.isDeleted) return { label: 'Ngừng bán', bg: '#fef2f2', color: '#991b1b' };
     const stock = book.stockQuantity ?? 0;
     if (stock === 0) return { label: 'Hết hàng', bg: '#fef2f2', color: '#dc2626' };
     if (stock <= 10) return { label: 'Sắp hết', bg: '#fffbeb', color: '#d97706' };
@@ -293,6 +296,7 @@ export default function AdminBooksPage() {
           <option value="available">Còn hàng</option>
           <option value="low">Sắp hết hàng</option>
           <option value="out">Hết hàng</option>
+          <option value="deleted">Ngừng bán</option>
         </select>
 
         {/* Result count */}
@@ -432,15 +436,30 @@ export default function AdminBooksPage() {
                     <Edit2 size={15} />
                   </button>
                   <button
-                    onClick={() => setDeleteId(book.id)}
-                    title="Xóa"
+                    onClick={() => !book.isDeleted && setDeleteId(book.id)}
+                    title={book.isDeleted ? "Sách đã ngừng bán" : "Ngừng bán"}
+                    disabled={book.isDeleted}
                     style={{
                       width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      border: '1px solid #fecaca', borderRadius: 8, background: '#fff',
-                      cursor: 'pointer', color: '#ef4444', transition: 'all 0.15s',
+                      border: book.isDeleted ? '1px solid #e2e8f0' : '1px solid #fecaca', 
+                      borderRadius: 8, 
+                      background: book.isDeleted ? '#f8fafc' : '#fff',
+                      cursor: book.isDeleted ? 'not-allowed' : 'pointer', 
+                      color: book.isDeleted ? '#94a3b8' : '#ef4444', 
+                      transition: 'all 0.15s',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.borderColor = '#f87171'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#fecaca'; }}
+                    onMouseEnter={(e) => { 
+                      if (!book.isDeleted) {
+                        e.currentTarget.style.background = '#fef2f2'; 
+                        e.currentTarget.style.borderColor = '#f87171'; 
+                      }
+                    }}
+                    onMouseLeave={(e) => { 
+                      if (!book.isDeleted) {
+                        e.currentTarget.style.background = '#fff'; 
+                        e.currentTarget.style.borderColor = '#fecaca'; 
+                      }
+                    }}
                   >
                     <Trash2 size={15} />
                   </button>
@@ -562,10 +581,10 @@ export default function AdminBooksPage() {
               <Trash2 size={24} style={{ color: '#ef4444' }} />
             </div>
             <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', textAlign: 'center', margin: '0 0 8px' }}>
-              Xóa sách này?
+              Ngừng bán sách này?
             </h3>
             <p style={{ fontSize: 14, color: '#64748b', textAlign: 'center', margin: '0 0 24px', lineHeight: 1.5 }}>
-              Hành động này không thể hoàn tác. Sách và toàn bộ dữ liệu liên quan sẽ bị xóa vĩnh viễn.
+              Hành động này sẽ ẩn sách khỏi trang chủ và không cho phép khách hàng tiếp tục mua. Bạn có chắc chắn muốn ngừng kinh doanh sách này?
             </p>
             <div style={{ display: 'flex', gap: 12 }}>
               <button
@@ -592,7 +611,7 @@ export default function AdminBooksPage() {
                   boxShadow: '0 2px 8px rgba(239,68,68,0.3)',
                 }}
               >
-                {deleting ? 'Đang xóa...' : 'Xóa sách'}
+                {deleting ? 'Đang xử lý...' : 'Ngừng bán'}
               </button>
             </div>
           </div>

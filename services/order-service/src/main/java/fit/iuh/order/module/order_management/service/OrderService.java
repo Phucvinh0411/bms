@@ -194,6 +194,10 @@ public class OrderService {
         return mapToResponse(orderRepository.save(order));
     }
 
+    public boolean checkPurchase(Long userId, Long bookId) {
+        return orderRepository.existsByUserIdAndBookIdAndStatusNot(userId, bookId, OrderStatus.CANCELED);
+    }
+
     private OrderResponse mapToResponse(Order order) {
         String paymentStatus = "CHƯA THANH TOÁN"; // default
         if (paymentTransactionRepository != null) {

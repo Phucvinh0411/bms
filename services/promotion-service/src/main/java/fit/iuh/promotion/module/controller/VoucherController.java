@@ -24,6 +24,11 @@ public class VoucherController {
         return ResponseEntity.ok(voucherService.getAll());
     }
 
+    @PostMapping
+    public ResponseEntity<Voucher> create(@RequestBody Voucher voucher) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(voucherService.create(voucher));
+    }
+
     @PostMapping("/ask-ai")
     public ResponseEntity<String> askAI(@RequestBody String message) {
         if (assistant == null) {

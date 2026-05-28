@@ -42,6 +42,12 @@ public class OrderController {
         return ResponseEntity.ok(orderService.updateOrderStatus(id, status));
     }
 
+    @GetMapping("/check-purchase")
+    public ResponseEntity<Boolean> checkPurchase(@RequestParam Long userId, @RequestParam Long bookId) {
+        boolean hasPurchased = orderService.checkPurchase(userId, bookId);
+        return ResponseEntity.ok(hasPurchased);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
         orderService.deleteOrder(id);

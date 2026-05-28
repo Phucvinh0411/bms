@@ -37,7 +37,24 @@ public class Review {
     @Column(name = "media_url", length = 500)
     private java.util.List<String> mediaUrls = new java.util.ArrayList<>();
 
-    private LocalDateTime createdAt = LocalDateTime.now();
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+        updatedAt = createdAt;
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 
     // Liên kết nhiều Review thuộc về 1 Book
     @ManyToOne
