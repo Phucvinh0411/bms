@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, MapPin, Plus, Sparkles, Star, CreditCard, Banknote, ShieldCheck, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Plus, Sparkles, Star, CreditCard, Banknote, ShieldCheck, CheckCircle2, Loader2, QrCode, Lock, Wallet, ExternalLink, Clock, AlertCircle } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '@/src/auth/context'
 import { getEffectiveUserId } from '@/src/cart/utils/userContext'
@@ -80,6 +80,8 @@ export default function CheckoutPage() {
 
   const statusParam = searchParams.get('status')
   const orderIdParam = searchParams.get('orderId')
+  const qrCodeParam = searchParams.get('qrCode')
+  const checkoutUrlParam = searchParams.get('checkoutUrl')
 
   const formattedCurrency = useMemo(
     () =>
@@ -124,8 +126,13 @@ export default function CheckoutPage() {
       setSseStatus('PENDING')
       setSseMessage('Đang kết nối tới cổng thanh toán để chờ xác thực chuyển khoản...')
 
-      // Gọi qua gateway Nginx trỏ vào order-service
-      const sseBase = process.env.NEXT_PUBLIC_ORDER_SERVICE_URL || 'http://localhost/api/v1/orders'
+      let sseBase = process.env.NEXT_PUBLIC_ORDER_SERVICE_URL
+      if (!sseBase) {
+        const protocol = window.location.protocol
+        const host = window.location.hostname
+        const port = window.location.port === '3000' ? '' : (window.location.port ? `:${window.location.port}` : '')
+        sseBase = `${protocol}//${host}${port}/api/v1/orders`
+      }
       const eventSource = new EventSource(`${sseBase}/api/payments/sse/${orderIdParam}`)
 
       eventSource.addEventListener('INIT', (event: MessageEvent) => {
@@ -435,9 +442,8 @@ export default function CheckoutPage() {
       const data = await submitCheckout(finalPayload)
       
       if (paymentMethod === 'PAYOS' && data.checkoutUrl) {
-        toast.success('Đang chuyển hướng sang cổng thanh toán VietQR PayOS...')
-        // Chuyển hướng trình duyệt sang trang thanh toán PayOS
-        window.location.href = data.checkoutUrl
+        toast.success('Đã tạo mã QR thanh toán thành công!')
+        router.push(`/checkout?status=success&orderId=${data.id}&qrCode=${encodeURIComponent(data.qrCode || '')}&checkoutUrl=${encodeURIComponent(data.checkoutUrl || '')}`)
       } else {
         toast.success(`Đặt hàng thành công! Mã đơn hàng: #${data.id}`)
         setPreview(data)
@@ -465,66 +471,180 @@ export default function CheckoutPage() {
     const isCOD = searchParams.get('method') === 'COD'
 
     return (
-      <div className="min-h-[calc(100vh-84px)] bg-[radial-gradient(circle_at_top,_#fff5e6_0%,_#f8fafc_40%,_#e9eef6_100%)] flex items-center justify-center p-4">
-        <div className="w-full max-w-lg rounded-3xl border border-[#e7dfd1] bg-white/90 p-8 text-center shadow-[0_24px_50px_rgba(106,78,32,0.15)] backdrop-blur transition-all">
+      <div className="min-h-[calc(100vh-84px)] bg-[radial-gradient(circle_at_top,_#fff8ed_0%,_#fbfcfd_50%,_#eef2f7_100%)] flex items-center justify-center p-4 sm:p-6">
+        <style dangerouslySetInnerHTML={{__html: `
+          @keyframes scanLine {
+            0%, 100% { top: 0%; opacity: 0.4; }
+            50% { top: 100%; opacity: 1; }
+          }
+          @keyframes pulseGlow {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.03); }
+          }
+          .laser-scanner {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #f59e0b, #ef4444, #f59e0b, transparent);
+            box-shadow: 0 0 12px 3px rgba(245, 158, 11, 0.8);
+            animation: scanLine 3.2s ease-in-out infinite;
+          }
+          .glow-ring {
+            animation: pulseGlow 2s ease-in-out infinite;
+          }
+        `}} />
+
+        <div className="w-full max-w-xl rounded-[32px] border border-[#e7dfd1] bg-white/95 p-6 sm:p-10 text-center shadow-[0_32px_64px_rgba(106,78,32,0.14)] backdrop-blur transition-all duration-300">
           
+          {/* TIẾN TRÌNH THANH TOÁN (STEPS) */}
+          <div className="mb-8 flex items-center justify-center gap-2 text-xs font-semibold text-slate-500">
+            <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[10px] text-white font-bold">1</span>
+              <span>Đơn hàng</span>
+            </div>
+            <div className="h-[1px] w-8 bg-slate-200"></div>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${!isCOD && sseStatus === 'PENDING' ? 'text-amber-700 bg-amber-50 border border-amber-200 font-bold' : 'text-emerald-600 bg-emerald-50 border border-emerald-100'}`}>
+              <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ${!isCOD && sseStatus === 'PENDING' ? 'bg-amber-500' : 'bg-emerald-500'}`}>2</span>
+              <span>Thanh toán</span>
+            </div>
+            <div className="h-[1px] w-8 bg-slate-200"></div>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${sseStatus === 'PAID' ? 'text-emerald-700 bg-emerald-50 border border-emerald-200 font-bold' : 'text-slate-400 bg-slate-50 border border-slate-200/50'}`}>
+              <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ${sseStatus === 'PAID' ? 'bg-emerald-500' : 'bg-slate-300'}`}>3</span>
+              <span>Hoàn tất</span>
+            </div>
+          </div>
+
           {/* GIAO DIỆN CHỜ THANH TOÁN (PAYOS + SSE) */}
           {!isCOD && sseStatus === 'PENDING' && (
             <div className="space-y-6">
-              <div className="relative mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-amber-50">
-                <span className="absolute inset-0 rounded-full border-4 border-amber-200 border-t-amber-600 animate-spin"></span>
-                <Sparkles size={36} className="text-amber-600 animate-pulse" />
-              </div>
               <div className="space-y-2">
-                <h2 className="text-2xl font-bold text-slate-800" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>
-                  Đang Chờ Quét Mã VietQR...
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800 border border-amber-200 animate-pulse">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                  Giao dịch đang đồng bộ
+                </span>
+                <h2 className="text-3xl font-black text-slate-800 tracking-tight" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>
+                  Quét Mã VietQR
                 </h2>
-                <p className="text-sm text-slate-500">Hệ thống đang đồng bộ với cổng ngân hàng thời gian thực qua Webhook & SSE.</p>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                  Vui lòng sử dụng ứng dụng Ngân hàng (Mobile Banking) quét mã QR bên dưới để hoàn tất giao dịch tự động.
+                </p>
               </div>
-              
-              <div className="rounded-2xl bg-amber-50/60 p-4 border border-amber-200 text-left">
-                <div className="flex items-start gap-2.5">
-                  <ShieldCheck className="mt-0.5 text-amber-700 shrink-0" size={18} />
-                  <p className="text-xs font-medium text-amber-800 leading-relaxed">{sseMessage}</p>
+
+              {/* QR Code Container with High-Tech Laser Scanning Line */}
+              {qrCodeParam && (
+                <div className="relative mx-auto my-6 w-64 h-64 bg-slate-50 p-3 rounded-[28px] border-2 border-dashed border-slate-200 shadow-[0_12px_36px_rgba(0,0,0,0.04)] flex items-center justify-center overflow-hidden group">
+                  {/* Glowing ambient background */}
+                  <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/5 to-red-500/5 glow-ring" />
+                  
+                  {/* High-tech Scanning Laser Bar */}
+                  <div className="laser-scanner" />
+
+                  {/* Corner accents */}
+                  <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-amber-500 rounded-tl-lg" />
+                  <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-amber-500 rounded-tr-lg" />
+                  <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-amber-500 rounded-bl-lg" />
+                  <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-amber-500 rounded-br-lg" />
+
+                  {/* QR Image */}
+                  <div className="relative z-10 w-full h-full bg-white p-2 rounded-2xl">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrCodeParam)}`}
+                      alt="VietQR PayOS"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* simulated payment timer */}
+              <div className="flex items-center justify-center gap-1.5 text-xs text-slate-500 font-medium">
+                <Clock size={14} className="text-amber-600" />
+                <span>Mã QR hết hạn trong: <span className="font-bold text-amber-600">14:59s</span></span>
+              </div>
+
+              {/* TRANSACTION DETAILS CARD */}
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-left shadow-sm space-y-2">
+                <div className="flex justify-between text-xs border-b border-slate-100 pb-2">
+                  <span className="text-slate-400">Đơn hàng:</span>
+                  <span className="font-bold text-slate-800">#{orderIdParam}</span>
+                </div>
+                <div className="flex justify-between text-xs border-b border-slate-100 pb-2">
+                  <span className="text-slate-400">Số tiền chuyển khoản:</span>
+                  <span className="font-bold text-emerald-600 text-sm">1.000 VND</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Nội dung chuyển khoản:</span>
+                  <span className="font-mono font-bold text-amber-800 text-[11px] bg-amber-50/80 px-2 py-0.5 rounded border border-amber-100">
+                    CSGWHB3JJI5 Thanh toan don hang {orderIdParam}
+                  </span>
                 </div>
               </div>
 
-              <div className="text-xs text-slate-400 space-y-1">
-                <p>💡 Vui lòng quét mã QR chuyển tiền <strong>1,000đ</strong> thật.</p>
-                <p>Hệ thống tự động phát hiện và chuyển tiếp ngay khi giao dịch thành công!</p>
+              <div className="flex flex-col items-center gap-3">
+                {checkoutUrlParam && (
+                  <a
+                    href={checkoutUrlParam}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-sm hover:shadow active:scale-95"
+                  >
+                    <ExternalLink size={13} className="text-slate-500" />
+                    Mở cổng thanh toán PayOS Portal
+                  </a>
+                )}
+                
+                <div className="flex items-center gap-2 justify-center text-xs text-emerald-600 font-bold animate-pulse mt-1">
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>Đang chờ xác nhận thanh toán trực tuyến tự động...</span>
+                </div>
+              </div>
+              
+              <div className="rounded-2xl bg-amber-50/40 p-4 border border-amber-100/60 text-left">
+                <div className="flex items-start gap-2.5">
+                  <ShieldCheck className="mt-0.5 text-amber-700 shrink-0" size={18} />
+                  <p className="text-xs font-semibold text-amber-800 leading-relaxed">{sseMessage}</p>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-400">
+                <p>🔒 Kết nối SSL an toàn tuyệt đối. PayOS được chứng nhận bảo mật PCI DSS Level 1.</p>
               </div>
             </div>
           )}
 
           {/* GIAO DIỆN THANH TOÁN THÀNH CÔNG (SSE kích hoạt) */}
           {(isCOD || sseStatus === 'PAID') && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-[0_12px_24px_rgba(16,185,129,0.2)]">
-                <CheckCircle2 size={48} className="animate-bounce" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-3xl font-extrabold text-slate-900" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>
-                  Đặt Hàng Thành Công!
-                </h2>
-                <p className="text-sm text-emerald-600 font-semibold uppercase tracking-wider">Cảm ơn bạn đã lựa chọn bms bookstore</p>
+            <div className="space-y-8 animate-fade-in py-4">
+              <div className="relative mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 border border-emerald-100 shadow-[0_20px_40px_rgba(16,185,129,0.15)] group">
+                <div className="absolute inset-0 bg-emerald-400/10 rounded-full animate-ping pointer-events-none" />
+                <CheckCircle2 size={48} className="relative z-10 animate-bounce" />
               </div>
               
-              <div className="rounded-2xl bg-emerald-50/40 p-5 border border-emerald-200 text-left space-y-3 text-sm text-slate-700">
-                <div className="flex justify-between"><span className="text-slate-500">Mã hóa đơn:</span><span className="font-bold text-slate-900">#{orderIdParam}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Phương thức:</span><span className="font-semibold text-slate-900">{isCOD ? 'Thanh toán khi nhận hàng (COD)' : 'Chuyển khoản VietQR (PayOS)'}</span></div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Trạng thái giao dịch:</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+              <div className="space-y-2">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>
+                  Đặt Hàng Thành Công!
+                </h2>
+                <p className="text-xs text-emerald-600 font-bold uppercase tracking-widest">Hệ thống đã nhận được thanh toán</p>
+              </div>
+              
+              <div className="rounded-3xl bg-emerald-50/20 p-6 border border-emerald-100 text-left space-y-3.5 text-sm text-slate-700 shadow-sm max-w-sm mx-auto">
+                <div className="flex justify-between items-center"><span className="text-slate-400 text-xs">Mã hóa đơn:</span><span className="font-bold text-slate-900 bg-white px-2.5 py-0.5 rounded-full border border-slate-100">#{orderIdParam}</span></div>
+                <div className="flex justify-between items-center"><span className="text-slate-400 text-xs">Phương thức:</span><span className="font-semibold text-slate-900">{isCOD ? 'Nhận hàng COD' : 'Chuyển khoản VietQR'}</span></div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 text-xs">Trạng thái đơn:</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
                     {isCOD ? 'CHỜ XỬ LÝ (COD)' : 'ĐÃ THANH TOÁN'}
                   </span>
                 </div>
               </div>
               
-              <div className="pt-2 flex flex-col gap-2">
-                <button onClick={() => router.push(`/order?orderId=${orderIdParam}`)} className="w-full rounded-full bg-slate-900 py-3 text-sm font-semibold uppercase tracking-widest text-white hover:bg-slate-800 shadow-md transition">
+              <div className="pt-2 flex flex-col gap-2 max-w-sm mx-auto">
+                <button onClick={() => router.push(`/order?orderId=${orderIdParam}`)} className="w-full rounded-full bg-slate-900 py-3 text-sm font-bold uppercase tracking-widest text-white hover:bg-slate-800 shadow-lg active:scale-[0.98] transition">
                   Xem chi tiết đơn hàng
                 </button>
-                <button onClick={() => router.push('/order')} className="w-full rounded-full border border-slate-300 py-3 text-sm font-semibold uppercase tracking-widest text-slate-700 hover:bg-slate-50 transition">
+                <button onClick={() => router.push('/order')} className="w-full rounded-full border border-slate-200 bg-white py-3 text-sm font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition">
                   Danh sách đơn hàng
                 </button>
               </div>
@@ -533,20 +653,20 @@ export default function CheckoutPage() {
 
           {/* GIAO DIỆN LỖI KẾT NỐI */}
           {sseStatus === 'ERROR' && (
-            <div className="space-y-6">
-              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-rose-100 text-rose-600">
-                <svg className="h-12 w-12 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
+            <div className="space-y-6 py-4">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-rose-50 text-rose-500 border border-rose-100 shadow-[0_16px_32px_rgba(244,63,94,0.15)]">
+                <AlertCircle size={40} className="animate-pulse" />
               </div>
+              
               <div className="space-y-2">
                 <h2 className="text-2xl font-bold text-slate-800" style={{ fontFamily: '"Playfair Display", Georgia, serif' }}>
                   Kết nối gián đoạn
                 </h2>
-                <p className="text-sm text-slate-500 leading-relaxed">{sseMessage}</p>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">{sseMessage}</p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                <button onClick={() => window.location.reload()} className="flex-1 rounded-full bg-amber-600 py-3 text-sm font-semibold uppercase tracking-wide text-white hover:bg-amber-500 shadow-sm">
+              
+              <div className="flex flex-col sm:flex-row gap-2 pt-2 max-w-sm mx-auto">
+                <button onClick={() => window.location.reload()} className="flex-1 rounded-full bg-amber-600 py-3 text-sm font-semibold uppercase tracking-wide text-white hover:bg-amber-500 shadow-md">
                   Tải lại trang (F5)
                 </button>
                 <button onClick={() => router.push('/')} className="flex-1 rounded-full border border-slate-300 py-3 text-sm font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-50">

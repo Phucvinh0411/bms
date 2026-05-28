@@ -128,7 +128,7 @@ public class PayOSPaymentStrategy implements PaymentStrategy {
             Map<String, Object> sortedParams = new TreeMap<>(data);
             StringBuilder signatureString = new StringBuilder();
             for (Map.Entry<String, Object> entry : sortedParams.entrySet()) {
-                if (entry.getValue() == null) continue;
+                if (entry.getValue() == null || entry.getValue().toString().trim().isEmpty()) continue;
                 if (signatureString.length() > 0) {
                     signatureString.append("&");
                 }
@@ -136,6 +136,7 @@ public class PayOSPaymentStrategy implements PaymentStrategy {
             }
 
             String calculatedSig = calculateHmacSHA256(signatureString.toString(), checksumKey);
+            System.out.println("PayOS Webhook Sig Verification - Calculated: " + calculatedSig + " | Received: " + signature);
             return calculatedSig.equalsIgnoreCase(signature);
         } catch (Exception e) {
             System.err.println("Lỗi trong quá trình xác thực chữ ký Webhook PayOS: " + e.getMessage());

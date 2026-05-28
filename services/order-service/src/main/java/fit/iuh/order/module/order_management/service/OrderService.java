@@ -99,8 +99,13 @@ public class OrderService {
                     cancelUrl = "http://localhost:3000/cart";
                 }
                 Map<String, Object> paymentData = payOSPaymentStrategy.createPaymentLink(savedOrder, returnUrl, cancelUrl);
-                if (paymentData != null && paymentData.containsKey("checkoutUrl")) {
-                    response.setCheckoutUrl((String) paymentData.get("checkoutUrl"));
+                if (paymentData != null) {
+                    if (paymentData.containsKey("checkoutUrl")) {
+                        response.setCheckoutUrl((String) paymentData.get("checkoutUrl"));
+                    }
+                    if (paymentData.containsKey("qrCode")) {
+                        response.setQrCode((String) paymentData.get("qrCode"));
+                    }
                 }
             } catch (Exception e) {
                 System.err.println("Lỗi tự động tạo link thanh toán PayOS VietQR: " + e.getMessage());

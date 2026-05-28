@@ -26,5 +26,6 @@ public class OrderResponse {
     private String status;
     private List<OrderItemResponse> items;
     private String checkoutUrl;
+    private String qrCode;
     private String paymentStatus;
 }

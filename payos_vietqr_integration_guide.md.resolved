@@ -1,0 +1,157 @@
+# CẨM NANG TÍCH HỢP THANH TOÁN VIETQR PAYOS (LIVE MODE)
+## HỆ THỐNG MICROSERVICES BÁN SÁCH ONLINE - BMS-TEST
+
+Tài liệu này hướng dẫn chi tiết cách cấu hình mạng (Ngrok), cài đặt cổng thanh toán PayOS VietQR động ở môi trường thực tế, sơ đồ kiến trúc truyền tin bất đồng bộ (RabbitMQ + State Pattern + Server-Sent Events) và trọn bộ mã nguồn hoàn chỉnh ở cả Backend (Spring Boot 3+) và Frontend (Next.js 14+).
+
+---
+
+## 1. HƯỚNG DẪN CÀI ĐẶT VÀ CẤU HÌNH NGROK (HỆ ĐIỀU HÀNH WINDOWS)
+
+Do toàn bộ hệ thống đang chạy dưới máy cá nhân (Localhost), cổng thanh toán PayOS (chạy trên Internet) không thể trực tiếp gửi tín hiệu kết quả thanh toán (Webhook) về máy của bạn được. **Ngrok** là giải pháp hoàn hảo để tạo một đường ống bảo mật (Secure Tunnel) giúp public máy cá nhân ra Internet.
+
+### Bước 1: Đăng ký & Tải Ngrok
+1. Truy cập vào trang chủ Ngrok: [https://ngrok.com](https://ngrok.com) và đăng ký một tài khoản miễn phí.
+2. Tải bản cài đặt dành cho **Windows** (Tệp `.zip` chứa duy nhất tệp `ngrok.exe`).
+3. Giải nén tệp `ngrok.exe` vào một thư mục bất kỳ trên ổ cứng của bạn (ví dụ: `C:\ngrok\`).
+
+### Bước 2: Nạp Token Xác Thực Cá Nhân (Authtoken)
+1. Đăng nhập vào trang quản trị Ngrok Dashboard, tìm mục **Your Authtoken** để lấy mã Token cá nhân.
+2. Mở cửa sổ **Command Prompt (CMD)** hoặc **PowerShell** tại thư mục chứa `ngrok.exe` và chạy lệnh sau để cấu hình xác thực:
+   ```bash
+   .\ngrok config add-authtoken <YOUR_AUTHTOKEN>
+   ```
+   *(Thay `<YOUR_AUTHTOKEN>` bằng mã Token thực tế từ Dashboard của bạn. Thông tin xác thực sẽ được lưu vào tệp cấu hình của Ngrok trên Windows).*
+
+### Bước 3: Khởi động đường ống Ngrok tới Port 8083 của Order Service
+Mặc dù bạn nghĩ cổng mặc định của dịch vụ đơn hàng là `8080`, cấu hình thực tế trong tệp `application.yaml` của dự án đang chạy ở cổng **8083** (được định tuyến thông qua Gateway cổng **80**).
+Để lấy link public, bạn mở Command Prompt hoặc PowerShell và gõ lệnh sau:
+
+* **Trực tiếp vào cổng của Order Service (Cổng 8083 - Khuyên dùng cho kiểm thử riêng lẻ):**
+  ```bash
+  .\ngrok http 8083
+  ```
+* **Hoặc thông qua cổng Nginx Gateway (Cổng 80 - Đồng bộ toàn hệ thống):**
+  ```bash
+  .\ngrok http 80
+  ```
+
+Sau khi chạy lệnh thành công, màn hình Terminal của Ngrok sẽ hiển thị thông tin kết nối, hãy copy đường link ở cột **Forwarding**, có dạng:
+`https://xxxx-xxxx-xxxx.ngrok-free.app`
+
+### Bước 4: Cấu hình Webhook URL trên trang quản trị PayOS
+1. Đăng nhập vào trang quản trị PayOS (chế độ Live Mode hoặc Test Mode tương ứng).
+2. Vào mục **Cấu hình Webhook** (Webhook Settings).
+3. Dán đường dẫn public từ Ngrok kết hợp với Endpoint Webhook vừa viết ở Backend vào ô **Webhook URL**:
+   * Nếu trỏ thẳng cổng 8083: `https://xxxx-xxxx-xxxx.ngrok-free.app/api/payments/payos/webhook`
+   * Nếu trỏ qua Gateway (cổng 80): `https://xxxx-xxxx-xxxx.ngrok-free.app/api/v1/orders/api/payments/payos/webhook`
+4. Bấm **Lưu** hoặc **Xác nhận**. PayOS sẽ gửi một gói tin kiểm tra (Ping) đến URL này, Backend của chúng ta sẽ phản hồi thành công và hoàn tất kích hoạt.
+
+---
+
+## 2. KIẾN TRÚC VÀ LƯỒNG XỬ LÝ (SYSTEM WORKFLOW)
+
+Sơ đồ tuần tự xử lý thanh toán VietQR động thời gian thực bằng mô hình bất đồng bộ:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Khách Hàng (Browser)
+    participant FE as Frontend Next.js
+    participant BE as Order Service (Spring Boot)
+    participant PayOS as Cổng Thanh Toán PayOS
+    participant RMQ as RabbitMQ (Message Broker)
+
+    User->>FE: Bấm đặt hàng (Chọn VietQR PayOS)
+    FE->>BE: POST /api/orders (Kèm phương thức PAYOS)
+    BE->>BE: Tạo đơn hàng PENDING trong DB
+    BE->>PayOS: POST /v2/payment-requests (Kèm signature HMAC-SHA256)
+    PayOS-->>BE: Phản hồi thông tin thanh toán (checkoutUrl)
+    BE-->>FE: Trả về thông tin đơn hàng & checkoutUrl
+    FE->>User: Điều hướng trình duyệt sang checkoutUrl (PayOS hosted page)
+    Note over FE,BE: FE chuyển sang trang kết quả & mở kết nối SSE tới BE: GET /api/payments/sse/{orderId}
+    User->>PayOS: Quét mã VietQR trên ứng dụng Ngân hàng chuyển tiền thật (1,000đ)
+    PayOS->>BE: Webhook POST /api/payments/payos/webhook (Đổ qua link Ngrok public)
+    BE->>BE: Giải mã & Xác thực signature bằng checksumKey để chống gian lận
+    Note over BE: Hợp lệ! Áp dụng State Pattern:<br/>order.changeState(new PendingState()) -> Trạng thái CONFIRMED<br/>Cập nhật trạng thái giao dịch sang PAID
+    BE->>RMQ: Publish PaymentSettledEvent vào exchange "payment-settled-exchange"
+    BE->>FE: Đẩy tín hiệu thời gian thực SSE (EVENT: PAYMENT_STATUS, data: PAID)
+    FE->>User: Cập nhật UI ngay lập tức hiển thị màn hình "Thanh toán thành công" (không cần reload F5)
+```
+
+---
+
+## 3. MÃ NGUỒN HOÀN CHỈNH
+
+### 3.1. File cấu hình bổ sung `application.yaml` (Backend)
+Để kích hoạt tính năng thanh toán, hãy thêm các cấu hình sau vào tệp `application.yaml` hoặc khai báo trong biến môi trường `.env`:
+
+```yaml
+payos:
+  client-id: ${PAYOS_CLIENT_ID:your_client_id_here}
+  api-key: ${PAYOS_API_KEY:your_api_key_here}
+  checksum-key: ${PAYOS_CHECKSUM_KEY:your_checksum_key_here}
+```
+
+### 3.2. Lớp chiến lược thanh toán `PayOSPaymentStrategy.java`
+Đường dẫn file: `services/order-service/src/main/java/fit/iuh/order/module/strategy/PayOSPaymentStrategy.java`
+
+> [!NOTE]
+> File này chịu trách nhiệm ký HMAC-SHA256 chuẩn tài liệu PayOS (sắp xếp khóa alphabet các trường để tạo chuỗi thô), kết nối WebClient tới API v2 của PayOS, và thực hiện giải mã xác thực chữ ký Webhook nhận về.
+
+*Lớp này đã được lưu thành công vào dự án.*
+
+### 3.3. Controller tiếp nhận Webhook & Server-Sent Events `PaymentController.java`
+Đường dẫn file: `services/order-service/src/main/java/fit/iuh/order/module/order_management/controller/PaymentController.java`
+
+> [!IMPORTANT]
+> Đây là trái tim của cơ chế xử lý Webhook thời gian thực. Controller này lắng nghe kết quả từ PayOS chuyển tiếp qua Ngrok, bảo vệ hệ thống khỏi gian lận tài chính nhờ đối chiếu chữ ký, thực hiện chuyển trạng thái State Pattern từ PENDING sang CONFIRMED, publish sự kiện bất đồng bộ qua RabbitMQ, và bắn dòng dữ liệu SSE trực tiếp tới client.
+
+*Lớp này đã được lưu thành công vào dự án.*
+
+### 3.4. DTO Sự kiện gửi qua RabbitMQ `PaymentSettledEvent.java`
+Đường dẫn file: `services/order-service/src/main/java/fit/iuh/order/module/messaging/PaymentSettledEvent.java`
+
+*Lớp này đã được lưu thành công vào dự án.*
+
+### 3.5. Frontend Component Next.js `app/checkout/page.tsx`
+Đường dẫn file: `apps/web-app/app/checkout/page.tsx`
+
+> [!TIP]
+> Giao diện Checkout được viết lại hoàn chỉnh bằng TypeScript 14+, hỗ trợ chọn phương thức thanh toán VietQR động, tự động bắt tham số URL để chuyển đổi trạng thái giao diện thành màn hình chờ thanh toán, mở kết nối EventSource tới Endpoint SSE của backend, cập nhật giao diện ngay lập tức khi nhận được tín hiệu PAID mà không làm gián đoạn trải nghiệm người dùng.
+
+*File này đã được lưu thành công vào dự án.*
+
+---
+
+## 4. MẪU DỮ LIỆU ĐỂ KIỂM THỬ WEBHOOK BẰNG POSTMAN
+
+Để mô phỏng tình huống PayOS gửi Webhook báo đã thanh toán thành công về Backend mà không cần quét tiền thật, bạn có thể sử dụng Postman để giả lập gửi một request POST tới địa chỉ local hoặc link Ngrok.
+
+* **Method:** `POST`
+* **URL:** `http://localhost:8083/api/payments/payos/webhook` hoặc `https://xxxx.ngrok-free.app/api/payments/payos/webhook`
+* **Headers:** `Content-Type: application/json`
+* **Raw Body (JSON):**
+
+```json
+{
+  "code": "00",
+  "desc": "success",
+  "data": {
+    "orderCode": 1,
+    "amount": 1000,
+    "description": "Thanh toan don hang #1",
+    "accountNumber": "970422XXXXXXXX",
+    "reference": "FT260527889988",
+    "transactionDateTime": "2026-05-27 20:45:00",
+    "currency": "VND",
+    "paymentLinkId": "PL99887766",
+    "code": "00",
+    "desc": "success"
+  },
+  "signature": "ca718b528b9fb6c0850257e1b52a78ee9d4b3df3bf7c43c22ff5d564fa26e25c"
+}
+```
+
+> [!WARNING]
+> Lưu ý rằng ở môi trường phát triển, do chúng ta có hàm xác thực chữ ký signature `verifyWebhookSignature` bằng thuật toán HMAC-SHA256, nếu bạn nhập mock data ngẫu nhiên thì chữ ký sẽ bị từ chối với HTTP 401 Unauthorized. Để vượt qua khi kiểm thử nội bộ bằng Postman, bạn có thể tạm thời comment dòng kiểm tra chữ ký ở Controller hoặc sử dụng đúng `checksumKey` để mã hóa chuỗi data dạng:
+> `accountNumber=970422XXXXXXXX&amount=1000&code=00&currency=VND&desc=success&description=Thanh toan don hang #1&orderCode=1&paymentLinkId=PL99887766&reference=FT260527889988&transactionDateTime=2026-05-27 20:45:00`

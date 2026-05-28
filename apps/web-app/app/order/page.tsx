@@ -100,6 +100,16 @@ export default function OrdersDashboardPage() {
     }
   }, [authLoading, isSignedIn])
 
+  // Tự động cập nhật selectedOrderId khi orderIdParam thay đổi
+  useEffect(() => {
+    if (orderIdParam && orders.length > 0) {
+      const matched = orders.find((o) => o.id === Number(orderIdParam))
+      if (matched) {
+        setSelectedOrderId(matched.id)
+      }
+    }
+  }, [orderIdParam, orders])
+
   // Tự động chuyển trang đăng nhập nếu chưa authenticate
   useEffect(() => {
     if (!authLoading && !isSignedIn) {

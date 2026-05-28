@@ -93,6 +93,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -104,6 +106,7 @@ services:
       - PAYOS_CLIENT_ID=${PAYOS_CLIENT_ID}
       - PAYOS_API_KEY=${PAYOS_API_KEY}
       - PAYOS_CHECKSUM_KEY=${PAYOS_CHECKSUM_KEY}
+      - SPRING_RABBITMQ_HOST=rabbitmq
     networks:
       - bookstore-network
 
@@ -202,6 +205,18 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    networks:
+      - bookstore-network
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: bookstore-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
     networks:
       - bookstore-network
 

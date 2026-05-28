@@ -49,6 +49,7 @@ export interface CheckoutResponse extends CheckoutPreviewResponse {
   orderDate?: string;
   shippingAddress?: string;
   checkoutUrl?: string;
+  qrCode?: string;
   items?: Array<{ id: number; bookId: number; quantity: number; priceAtPurchase: number }>;
 }
 
