@@ -1,13 +1,12 @@
 package fit.iuh.order.module.handler;
 
-import fit.iuh.order.module.cart_management.repository.CartItemRepository;
-import fit.iuh.order.module.cart_management.repository.CartRepository;
+import fit.iuh.order.module.cart_management.repository.CartRedisRepository;
+import fit.iuh.order.module.cart_management.model.RedisCart;
+import fit.iuh.order.module.cart_management.model.RedisCartItem;
 import fit.iuh.order.module.exception.BadRequestException;
 import fit.iuh.order.module.exception.NotFoundException;
 import fit.iuh.order.module.order_management.dto.OrderItemRequest;
 import fit.iuh.order.module.order_management.dto.external.BookResponseDTO;
-import fit.iuh.order.module.models.Cart;
-import fit.iuh.order.module.models.CartItem;
 import fit.iuh.order.module.models.OrderItem;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -20,8 +19,7 @@ import org.springframework.web.client.RestTemplate;
 @Component
 @RequiredArgsConstructor
 public class StockCheckHandler extends CheckoutHandler {
-    private final CartRepository cartRepository;
-    private final CartItemRepository cartItemRepository;
+    private final CartRedisRepository cartRedisRepository;
     private final RestTemplate restTemplate;
 
     @Value("${external.product-service.base-url:http://product-service:8082}")
@@ -35,14 +33,12 @@ public class StockCheckHandler extends CheckoutHandler {
         if (requestedItems != null && !requestedItems.isEmpty()) {
             itemRequests.addAll(requestedItems);
         } else {
-            Cart cart = cartRepository.findByUserId(context.getUserId())
-                .orElseThrow(() -> new NotFoundException("Cart not found for userId=" + context.getUserId()));
-            context.setCartId(cart.getId());
-            List<CartItem> cartItems = cartItemRepository.findByCartId(cart.getId());
-            if (cartItems.isEmpty()) {
+            RedisCart cart = cartRedisRepository.getCart(context.getUserId());
+            if (cart.getItems() == null || cart.getItems().isEmpty()) {
                 throw new BadRequestException("Cart is empty");
             }
-            for (CartItem item : cartItems) {
+            context.setCartId(cart.getUserId()); // Set cart ID to userId for identification
+            for (RedisCartItem item : cart.getItems()) {
                 itemRequests.add(new OrderItemRequest(item.getBookId(), item.getQuantity()));
             }
         }

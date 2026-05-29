@@ -305,7 +305,7 @@ export default function CartPage() {
             </div>
 
             <Link
-              href="/order"
+              href="/checkout"
               className="block w-full rounded-full bg-slate-900 py-3 text-center text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800"
             >
               Tiến hành thanh toán

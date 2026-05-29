@@ -6,6 +6,9 @@ export interface CheckoutRequest {
   shippingLongitude?: number;
   voucherCode?: string;
   items?: Array<{ bookId: number; quantity: number }>;
+  paymentMethod?: string;
+  returnUrl?: string;
+  cancelUrl?: string;
 }
 
 export interface ShippingAddress {
@@ -40,7 +43,14 @@ export interface CheckoutPreviewResponse {
 
 export interface CheckoutResponse extends CheckoutPreviewResponse {
   id: number;
+  userId: number;
   status: string;
+  paymentStatus?: string;
+  orderDate?: string;
+  shippingAddress?: string;
+  checkoutUrl?: string;
+  qrCode?: string;
+  items?: Array<{ id: number; bookId: number; quantity: number; priceAtPurchase: number }>;
 }
 
 export interface ApiError {
