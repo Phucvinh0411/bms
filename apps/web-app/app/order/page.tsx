@@ -20,7 +20,8 @@ import {
   BookOpen,
   DollarSign,
   CreditCard,
-  Banknote
+  Banknote,
+  Star
 } from 'lucide-react'
 import { useAuth } from '@/src/auth/context'
 import { getEffectiveUserId } from '@/src/cart/utils/userContext'
@@ -212,9 +213,9 @@ export default function OrdersDashboardPage() {
     }
     setSubmittingReview(true)
     try {
-      const userDisplayName = activeUser?.firstName 
-        ? `${activeUser.firstName} ${activeUser.lastName ?? ''}`.trim() 
-        : activeUser?.email || 'Khách hàng BMS'
+      const userDisplayName = activeUser?.fullName 
+        || activeUser?.email 
+        || 'Khách hàng BMS'
 
       await reviewService.addReviewToBook(reviewBookId, {
         content: reviewContent.trim(),
