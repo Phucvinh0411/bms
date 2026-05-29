@@ -1,4 +1,4 @@
-package fit.iuh.order.module.semanticsearch;
+package fit.iuh.semanticsearch;
 
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;

@@ -1,4 +1,4 @@
-package fit.iuh.order.module.semanticsearch;
+package fit.iuh.semanticsearch;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -17,27 +17,6 @@ public interface BookSemanticRepository extends JpaRepository<fit.iuh.order.modu
 
     @Query(value = "SELECT * FROM books WHERE fts_tokens IS NULL", nativeQuery = true)
     List<fit.iuh.order.module.domain.Book> findBooksWithoutFtsTokens();
-
-    @Query(value = "SELECT "
-        + "b.id as id, "
-        + "b.title as title, "
-        + "b.author as author, "
-        + "b.publisher as publisher, "
-        + "b.price as price, "
-        + "b.stock_quantity as stockQuantity, "
-        + "b.status as status, "
-        + "b.category_id as categoryId, "
-        + "b.image_url as imageUrl, "
-        + "b.description as description, "
-        + "c.name as categoryName, "
-        + "b.parent_category_id as parentCategoryId "
-        + "FROM books b "
-        + "LEFT JOIN categories c ON c.id = b.category_id "
-        + "LEFT JOIN categories pc ON pc.id = b.parent_category_id "
-        + "WHERE b.status = 'AVAILABLE' AND b.embedding IS NOT NULL "
-        + "ORDER BY b.embedding <=> cast(:queryVector as vector) "
-        + "LIMIT :limit", nativeQuery = true)
-    List<SemanticBookSearchProjection> semanticSearch(@Param("queryVector") String queryVector, @Param("limit") int limit);
 
     @Modifying
     @Query(value = "UPDATE books SET embedding = cast(:embedding as vector) WHERE id = :id", nativeQuery = true)

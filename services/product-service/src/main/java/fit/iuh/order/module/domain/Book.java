@@ -38,7 +38,7 @@ public class Book {
     private String description;
 
     @Transient
-    @Column(name = "embedding", columnDefinition = "vector(768)")
+    @Column(name = "embedding", columnDefinition = "vector(1024)")
     private float[] embedding;
 
     @Column(name = "image_url", length = 500)

@@ -1,6 +1,8 @@
-package fit.iuh.order.module.semanticsearch;
+package fit.iuh.semanticsearch.backfill;
 
 import fit.iuh.order.module.domain.Book;
+import fit.iuh.semanticsearch.BookSemanticRepository;
+import fit.iuh.semanticsearch.SemanticEmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

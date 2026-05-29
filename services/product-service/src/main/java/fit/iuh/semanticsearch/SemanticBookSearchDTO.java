@@ -1,4 +1,4 @@
-package fit.iuh.order.module.semanticsearch;
+package fit.iuh.semanticsearch;
 
 import fit.iuh.order.module.domain.enums.BookStatus;
 

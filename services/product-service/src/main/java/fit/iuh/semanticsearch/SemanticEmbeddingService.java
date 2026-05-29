@@ -1,6 +1,7 @@
-package fit.iuh.order.module.semanticsearch;
+package fit.iuh.semanticsearch;
 
-import org.springframework.beans.factory.annotation.Value;
+import fit.iuh.config.OllamaAIProperties;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -11,21 +12,16 @@ import java.util.List;
 public class SemanticEmbeddingService {
 
     private final RestClient restClient;
-    private final String embeddingModel;
+    private final OllamaAIProperties ollamaAIProperties;
 
-    public SemanticEmbeddingService(
-        @Value("${ollama.base-url:http://ai-engine:11434}") String baseUrl,
-        @Value("${ollama.embedding.model:granite-embedding-311m-multilingual-r2}") String embeddingModel
-    ) {
-        System.out.println("Initializing SemanticEmbeddingService with Ollama base URL: " + baseUrl + " and embedding model: " + embeddingModel);
-        this.restClient = RestClient.builder()
-            .baseUrl(baseUrl)
-            .build();
-        this.embeddingModel = embeddingModel;
+    public SemanticEmbeddingService(@Qualifier("cpuRestClient") RestClient restClient,
+                                    OllamaAIProperties ollamaAIProperties) {
+        this.restClient = restClient;
+        this.ollamaAIProperties = ollamaAIProperties;
     }
 
     public float[] generateEmbedding(String text) {
-        OllamaEmbeddingRequest request = new OllamaEmbeddingRequest(embeddingModel, text);
+        OllamaEmbeddingRequest request = new OllamaEmbeddingRequest(ollamaAIProperties.getEmbeddingModel(), text);
         OllamaEmbeddingResponse response = callEmbeddingEndpoint("/api/embed", request);
 
         if (response == null || !response.hasEmbedding()) {
@@ -77,7 +73,6 @@ public class SemanticEmbeddingService {
             if (embedding != null && !embedding.isEmpty()) {
                 return true;
             }
-
             return embeddings != null && !embeddings.isEmpty() && embeddings.getFirst() != null && !embeddings.getFirst().isEmpty();
         }
     }
