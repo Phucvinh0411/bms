@@ -1,7 +1,7 @@
 package fit.iuh.ai_helper;
 
 import fit.iuh.config.OllamaAIProperties;
-import lombok.AllArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
@@ -10,16 +10,23 @@ import java.util.List;
 import java.util.Locale;
 
 @Component
-@AllArgsConstructor
 public class LlmIntentAnalyzer {
 
     private final RestClient restClient;
     private final OllamaAIProperties properties;
     private final ObjectMapper objectMapper;
 
+    public LlmIntentAnalyzer(@Qualifier("cpuRestClient") RestClient restClient,
+                             OllamaAIProperties properties,
+                             ObjectMapper objectMapper) {
+        this.restClient = restClient;
+        this.properties = properties;
+        this.objectMapper = objectMapper;
+    }
+
     public IntentResponseDto analyzeWithLlm(String userMessage) {
         String systemPrompt = buildSystemPrompt();
-        String model = safeText(properties.getChatModel(), "qwen2.5");
+        String model = safeText(properties.getIntentModel(), "qwen2.5");
 
         var requestBody = new OllamaRequestDto(
             model,

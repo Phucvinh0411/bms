@@ -138,7 +138,9 @@ SELECT setval(pg_get_serial_sequence('categories', 'id'), coalesce(max(id), 1), 
 
 -- 4. Semantic search setup and book seed data
 CREATE EXTENSION IF NOT EXISTS vector;
-ALTER TABLE books ADD COLUMN IF NOT EXISTS embedding vector(768);
+DROP INDEX IF EXISTS books_embedding_hnsw_idx;
+ALTER TABLE books ADD COLUMN IF NOT EXISTS embedding vector(1024);
+ALTER TABLE books ALTER COLUMN embedding TYPE vector(1024) USING embedding::vector(1024);
 ALTER TABLE books ADD COLUMN IF NOT EXISTS fts_tokens tsvector;
 
 CREATE INDEX IF NOT EXISTS books_embedding_hnsw_idx
@@ -413,3 +415,16 @@ UPDATE books SET image_url = 'https://covers.openlibrary.org/b/title/Crayon%20Sh
 UPDATE books SET image_url = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa' WHERE id = 1108;
 UPDATE books SET image_url = 'https://images.unsplash.com/photo-1512820790803-83ca734da794' WHERE id = 1109;
 UPDATE books SET image_url = 'https://images.unsplash.com/photo-1516979187457-637abb4f9353' WHERE id = 1110;
+
+INSERT INTO book_images (book_id, image_url) VALUES
+(1001, 'https://images.unsplash.com/photo-1455885666463-7d0f9740e4f0'),
+(1001, 'https://images.unsplash.com/photo-1512820790803-83ca734da794'),
+(1004, 'https://images.unsplash.com/photo-1515879218367-8466d910aaa4'),
+(1004, 'https://images.unsplash.com/photo-1517841905240-472988babdf9'),
+(1014, 'https://images.unsplash.com/photo-1516979187457-637abb4f9353'),
+(1014, 'https://images.unsplash.com/photo-1507842217343-583bb7270b66'),
+(1041, 'https://images.unsplash.com/photo-1498050108023-c5249f4df085'),
+(1041, 'https://images.unsplash.com/photo-1515879218367-8466d910aaa4'),
+(1050, 'https://images.unsplash.com/photo-1532012197267-da84d127e765'),
+(1050, 'https://images.unsplash.com/photo-1499750310107-5fef28a66643')
+ON CONFLICT DO NOTHING;

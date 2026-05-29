@@ -10,9 +10,11 @@ import org.springframework.context.annotation.Configuration;
 @Getter
 @Setter
 public class OllamaAIProperties {
-    private String baseUrl;
+    private String chatUrl;
+    private String cpuUrl;
     private Chat chat = new Chat();
     private Embedding embedding = new Embedding();
+    private Intent intent = new Intent();
 
     public String getChatModel() {
         return chat != null ? chat.getModel() : null;
@@ -20,6 +22,17 @@ public class OllamaAIProperties {
 
     public String getEmbeddingModel() {
         return embedding != null ? embedding.getModel() : null;
+    }
+
+    /**
+     * Lấy model cho bước Intent Extraction.
+     * Nếu ollama.ai.intent.model không được cấu hình → tự động fallback về chat.model.
+     */
+    public String getIntentModel() {
+        if (intent != null && intent.getModel() != null && !intent.getModel().isBlank()) {
+            return intent.getModel();
+        }
+        return getChatModel();
     }
 
     @Getter
@@ -31,6 +44,12 @@ public class OllamaAIProperties {
     @Getter
     @Setter
     public static class Embedding {
+        private String model;
+    }
+
+    @Getter
+    @Setter
+    public static class Intent {
         private String model;
     }
 }

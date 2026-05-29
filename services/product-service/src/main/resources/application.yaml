@@ -1,6 +1,8 @@
 spring:
   application:
     name: product-service
+  config:
+    import: optional:file:/app/.env
   datasource:
     url: ${PRODUCT_DB_URL:jdbc:postgresql://postgres:5432/product_db}
     username: ${PRODUCT_DB_USER:product_db}
@@ -21,11 +23,14 @@ spring:
 
 ollama:
   ai:
-    base-url: ${OLLAMA_BASE_URL:http://ai-engine:11434}
+    chat-url: ${OLLAMA_CHAT_URL:http://ai-engine-gpu:11434}
+    cpu-url: ${OLLAMA_CPU_URL:http://ai-engine-cpu:11434}
     embedding:
-      model: ${OLLAMA_EMBEDDING_MODEL:granite-embedding-311m-multilingual-r2}
+      model: ${OLLAMA_EMBEDDING_MODEL:hf.co/doof-ferb/AITeamVN-Vietnamese_Embedding-gguf:Q8_0}
+    intent:
+      model: ${OLLAMA_INTENT_MODEL:qwen2.5:0.5b-instruct}
     chat:
-      model: ${OLLAMA_CHAT_MODEL:qwen2.5:1.5b-instruct}
+      model: ${OLLAMA_CHAT_MODEL:qwen2.5:3b-instruct}
 
 server:
   port: 8082

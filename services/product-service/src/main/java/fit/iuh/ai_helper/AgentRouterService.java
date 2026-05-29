@@ -3,16 +3,15 @@ package fit.iuh.ai_helper;
 import fit.iuh.config.OllamaAIProperties;
 import fit.iuh.semanticsearch.HybridSearchService;
 import fit.iuh.semanticsearch.SemanticBookSearchDTO;
-import lombok.AllArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StopWatch;
 import org.springframework.web.client.RestClient;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
-@AllArgsConstructor
 public class AgentRouterService {
 
     private final RuleIntentDetector ruleDetector;
@@ -21,33 +20,86 @@ public class AgentRouterService {
     private final RestClient restClient;
     private final OllamaAIProperties properties;
 
+    public AgentRouterService(RuleIntentDetector ruleDetector,
+                              LlmIntentAnalyzer llmAnalyzer,
+                              HybridSearchService bookSearchService,
+                              @Qualifier("chatRestClient") RestClient restClient,
+                              OllamaAIProperties properties) {
+        this.ruleDetector = ruleDetector;
+        this.llmAnalyzer = llmAnalyzer;
+        this.bookSearchService = bookSearchService;
+        this.restClient = restClient;
+        this.properties = properties;
+    }
+
     /**
-     * Hàm điều phối chính: Xử lý câu hỏi của User và trả về câu thoại của AI
+     * Hàm điều phối chính: Xử lý câu hỏi của User và trả về câu thoại của AI.
+     * Đã tích hợp StopWatch profiling để đo đạc từng bước trong pipeline RAG.
      */
     public String routeAndExecute(String userMessage) {
+        StopWatch sw = new StopWatch("RAG Agent Profiler");
+
+        sw.start("0. Intent Detection (Rule + LLM)");
         IntentResponseDto extraction = resolveIntentResponse(userMessage);
+        sw.stop();
+
         String systemPrompt = buildBaseSystemPrompt(extraction);
 
         if (Intent.BOOK_SEARCH.name().equalsIgnoreCase(extraction.getIntent())) {
             String cleanedKeyword = safeKeyword(extraction.getKeyword(), userMessage);
             BigDecimal maxPrice = extraction.getMaxPrice();
+            List<SemanticBookSearchDTO> books;
 
-            List<SemanticBookSearchDTO> books = bookSearchService.hybridSearch(
-                cleanedKeyword,
-                5,
-                0,
-                null,
-                null,
-                maxPrice
-            );
+            try {
+                sw.start("1. Call Embedding API");
+                float[] queryEmbedding = bookSearchService.generateQueryEmbedding(cleanedKeyword);
+                sw.stop();
 
+                sw.start("2. Execute Postgres Hybrid Search");
+                books = bookSearchService.searchByVector(
+                    bookSearchService.toVectorLiteral(queryEmbedding),
+                    cleanedKeyword,
+                    5,
+                    0,
+                    null,
+                    null,
+                    maxPrice
+                );
+                sw.stop();
+            } catch (Exception exception) {
+                if (sw.isRunning()) {
+                    sw.stop();
+                }
+                System.out.println("Embedding/Hybrid search failed, fallback to text search: " + exception.getMessage());
+
+                sw.start("2. Execute Postgres Hybrid Search");
+                books = bookSearchService.searchByText(
+                    cleanedKeyword,
+                    5,
+                    0,
+                    null,
+                    null,
+                    maxPrice
+                );
+                sw.stop();
+            }
+
+            sw.start("3. Convert Entity to DTO and String Text");
             String textContext = buildBookContext(books);
             systemPrompt = buildRagPrompt(extraction, textContext);
+            sw.stop();
         } else if (Intent.ORDER_CHECKING.name().equalsIgnoreCase(extraction.getIntent())) {
             systemPrompt = buildOrderCheckingPrompt(extraction);
         }
 
-        return generateFinalResponse(systemPrompt, userMessage);
+        sw.start("4. Call Chat API");
+        String result = generateFinalResponse(systemPrompt, userMessage);
+        sw.stop();
+
+        System.out.println("\n" + sw.prettyPrint());
+        System.out.printf(">>> TỔNG THỜI GIAN PIPELINE: %.3f giây%n%n", sw.getTotalTimeSeconds());
+
+        return result;
     }
 
     /**
@@ -167,31 +219,27 @@ public class AgentRouterService {
             return "- Hiện không có sách nào khớp với truy vấn.";
         }
 
-        return books.stream()
-            .map(book -> {
-                String priceText = book.price() == null ? "N/A" : book.price().stripTrailingZeros().toPlainString() + " VNĐ";
-                String scoreText = book.combinedScore() == null ? "N/A" : String.format("%.4f", book.combinedScore());
-                return """
-                    - ID: %s
-                      Tên sách: %s
-                      Tác giả: %s
-                      Nhà xuất bản: %s
-                      Giá: %s
-                      Danh mục: %s
-                      Mô tả: %s
-                      Điểm tổng hợp: %s
-                    """.formatted(
-                        book.id(),
-                        safeText(book.title()),
-                        safeText(book.author()),
-                        safeText(book.publisher()),
-                        priceText,
-                        safeText(book.categoryName()),
-                        safeText(book.description()),
-                        scoreText
-                    ).trim();
-            })
-            .collect(Collectors.joining("\n"));
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < books.size(); i++) {
+            SemanticBookSearchDTO book = books.get(i);
+            String priceText = book.price() == null ? "N/A" : book.price().stripTrailingZeros().toPlainString() + " VNĐ";
+            String scoreText = book.combinedScore() == null ? "N/A" : String.format("%.4f", book.combinedScore());
+
+            builder.append("- ID: ").append(book.id()).append('\n')
+                .append("  Tên sách: ").append(safeText(book.title())).append('\n')
+                .append("  Tác giả: ").append(safeText(book.author())).append('\n')
+                .append("  Nhà xuất bản: ").append(safeText(book.publisher())).append('\n')
+                .append("  Giá: ").append(priceText).append('\n')
+                .append("  Danh mục: ").append(safeText(book.categoryName())).append('\n')
+                .append("  Mô tả: ").append(safeText(book.description())).append('\n')
+                .append("  Điểm tổng hợp: ").append(scoreText);
+
+            if (i < books.size() - 1) {
+                builder.append('\n');
+            }
+        }
+
+        return builder.toString();
     }
 
     private String safeKeyword(String keyword, String fallbackMessage) {

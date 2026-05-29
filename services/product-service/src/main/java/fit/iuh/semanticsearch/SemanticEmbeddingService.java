@@ -1,7 +1,7 @@
 package fit.iuh.semanticsearch;
 
 import fit.iuh.config.OllamaAIProperties;
-import lombok.AllArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -9,11 +9,16 @@ import org.springframework.web.client.RestClient;
 import java.util.List;
 
 @Service
-@AllArgsConstructor
 public class SemanticEmbeddingService {
 
     private final RestClient restClient;
     private final OllamaAIProperties ollamaAIProperties;
+
+    public SemanticEmbeddingService(@Qualifier("cpuRestClient") RestClient restClient,
+                                    OllamaAIProperties ollamaAIProperties) {
+        this.restClient = restClient;
+        this.ollamaAIProperties = ollamaAIProperties;
+    }
 
     public float[] generateEmbedding(String text) {
         OllamaEmbeddingRequest request = new OllamaEmbeddingRequest(ollamaAIProperties.getEmbeddingModel(), text);
