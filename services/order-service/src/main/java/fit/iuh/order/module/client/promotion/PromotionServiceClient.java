@@ -1,19 +1,29 @@
 package fit.iuh.order.module.client.promotion;
 
-import java.util.List;
+import fit.iuh.order.module.exception.BadRequestException;
+import fit.iuh.order.module.exception.NotFoundException;
 import java.util.Optional;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.RestTemplate;
 
 @Component
-@RequiredArgsConstructor
 public class PromotionServiceClient implements PromotionClient {
-    private final WebClient.Builder webClientBuilder;
+
+    private final RestTemplate restTemplate;
 
     @Value("${external.promotion-service.base-url:http://promotion-service:8084}")
     private String baseUrl;
+
+    @Autowired
+    public PromotionServiceClient(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
 
     @Override
     public Optional<PromotionVoucherResponse> getVoucherByCode(String code) {
@@ -21,20 +31,28 @@ public class PromotionServiceClient implements PromotionClient {
             return Optional.empty();
         }
 
-        List<PromotionVoucherResponse> vouchers = webClientBuilder.build()
-            .get()
-            .uri(baseUrl + "/api/vouchers")
-            .retrieve()
-            .bodyToFlux(PromotionVoucherResponse.class)
-            .collectList()
-            .block();
+        String url = baseUrl + "/api/vouchers/code/" + code.trim();
 
-        if (vouchers == null) {
-            return Optional.empty();
+        try {
+            ResponseEntity<PromotionVoucherResponse> response = restTemplate.getForEntity(url, PromotionVoucherResponse.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return Optional.of(response.getBody());
+            }
+
+            throw new NotFoundException("Mã giảm giá không tồn tại: " + code);
+
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new NotFoundException("Mã giảm giá không tồn tại: " + code);
+            } else if (e.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                throw new BadRequestException("Yêu cầu không hợp lệ khi kiểm tra mã giảm giá: " + e.getResponseBodyAsString());
+            }
+            throw new BadRequestException("Lỗi từ hệ thống khuyến mãi: " + e.getMessage());
+        } catch (HttpServerErrorException e) {
+            throw new BadRequestException("Hệ thống khuyến mãi gặp sự cố, vui lòng thử lại sau: " + e.getMessage());
+        } catch (Exception e) {
+            throw new BadRequestException("Không thể kết nối đến hệ thống khuyến mãi: " + e.getMessage());
         }
-
-        return vouchers.stream()
-            .filter(voucher -> code.equalsIgnoreCase(voucher.getCode()))
-            .findFirst();
     }
 }

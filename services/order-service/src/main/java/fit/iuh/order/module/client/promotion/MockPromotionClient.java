@@ -7,8 +7,8 @@ import java.util.Optional;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
-@Component
-@Primary
+// @Component
+// @Primary
 public class MockPromotionClient implements PromotionClient {
     private final List<PromotionVoucherResponse> vouchers = List.of(
         buildVoucher(

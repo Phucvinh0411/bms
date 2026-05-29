@@ -1,6 +1,7 @@
 package fit.iuh.promotion.module.controller;
 
 import fit.iuh.promotion.module.domain.Voucher;
+import fit.iuh.promotion.module.dto.VoucherResponseDTO;
 import fit.iuh.promotion.module.service.VoucherAssistant;
 import fit.iuh.promotion.module.service.VoucherService; // Cần thiết!
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +25,14 @@ public class VoucherController {
         return ResponseEntity.ok(voucherService.getAll());
     }
 
+    @GetMapping("/code/{code}")
+    public ResponseEntity<VoucherResponseDTO> getByCode(@PathVariable String code) {
+        return voucherService.getByCode(code)
+                .map(this::convertToDTO)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     @PostMapping
     public ResponseEntity<Voucher> create(@RequestBody Voucher voucher) {
         return ResponseEntity.status(HttpStatus.CREATED).body(voucherService.create(voucher));
@@ -36,5 +45,21 @@ public class VoucherController {
                     .body("AI assistant is not configured. Please set a chat language model for promotion-service.");
         }
         return ResponseEntity.ok(assistant.suggestVoucher(message));
+    }
+
+    private VoucherResponseDTO convertToDTO(Voucher voucher) {
+        VoucherResponseDTO dto = new VoucherResponseDTO();
+        dto.setId(voucher.getId());
+        dto.setCode(voucher.getCode());
+        dto.setSummary(voucher.getCode() + ": " + voucher.getDescription());
+        dto.setDiscountType(voucher.getDiscountType());
+        dto.setDiscountValue(voucher.getDiscountAmount());
+        dto.setMinimumOrderValue(voucher.getMinOrderValue());
+        dto.setMaxDiscountAmount(voucher.getMaxDiscountAmount());
+        dto.setStartDate(voucher.getStartDate());
+        dto.setEndDate(voucher.getEndDate());
+        dto.setStatus(voucher.getStatus());
+        dto.setDescription(voucher.getDescription());
+        return dto;
     }
 }

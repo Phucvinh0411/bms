@@ -5,6 +5,7 @@ import fit.iuh.promotion.module.repository.VoucherRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired; // Cực kỳ quan trọng!
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class VoucherService {
@@ -18,5 +19,12 @@ public class VoucherService {
 
     public Voucher create(Voucher voucher) {
         return voucherRepository.save(voucher);
+    }
+
+    public Optional<Voucher> getByCode(String code) {
+        if (code == null || code.isBlank()) {
+            return Optional.empty();
+        }
+        return voucherRepository.findByCode(code.trim());
     }
 }
