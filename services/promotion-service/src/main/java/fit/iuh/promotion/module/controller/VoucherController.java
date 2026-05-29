@@ -38,6 +38,21 @@ public class VoucherController {
         return ResponseEntity.status(HttpStatus.CREATED).body(voucherService.create(voucher));
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<Voucher> update(@PathVariable Long id, @RequestBody Voucher voucher) {
+        return voucherService.update(id, voucher)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        if (voucherService.delete(id)) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.notFound().build();
+    }
+
     @PostMapping("/ask-ai")
     public ResponseEntity<String> askAI(@RequestBody String message) {
         if (assistant == null) {

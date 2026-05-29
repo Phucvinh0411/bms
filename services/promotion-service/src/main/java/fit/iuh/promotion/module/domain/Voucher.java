@@ -37,4 +37,6 @@ public class Voucher {
     private VoucherStatus status;
 
     private String description; // AI sẽ dùng trường này để hiểu mục đích voucher
+
+    private boolean isDeleted = false; // Hỗ trợ xóa mềm voucher
 }

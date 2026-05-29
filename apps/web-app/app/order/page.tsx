@@ -27,6 +27,7 @@ import { getEffectiveUserId } from '@/src/cart/utils/userContext'
 import { getOrders, cancelOrder } from '@/src/api/checkoutService'
 import { bookService } from '@/src/api/bookService'
 import type { CheckoutResponse } from '@/src/checkout/types'
+import { reviewService } from '@/src/api/reviewService'
 
 interface ResolvedBook {
   id: number
@@ -38,12 +39,20 @@ interface ResolvedBook {
 export default function OrdersDashboardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { isSignedIn, isLoading: authLoading } = useAuth()
+  const { isSignedIn, isLoading: authLoading, activeUser } = useAuth()
   
   const [orders, setOrders] = useState<CheckoutResponse[]>([])
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null)
+
+  // Review & Rating State variables
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
+  const [reviewBookId, setReviewBookId] = useState<number | null>(null)
+  const [reviewBookTitle, setReviewBookTitle] = useState('')
+  const [reviewRating, setReviewRating] = useState(5)
+  const [reviewContent, setReviewContent] = useState('')
+  const [submittingReview, setSubmittingReview] = useState(false)
   
   // Cache để lưu thông tin sách đã load, tránh gọi lại nhiều lần
   const [booksCache, setBooksCache] = useState<Record<number, ResolvedBook>>({})
@@ -185,6 +194,44 @@ export default function OrdersDashboardPage() {
     }
   }
 
+  // --- MỞ MODAL ĐÁNH GIÁ ---
+  function openReviewModal(bookId: number, title: string) {
+    setReviewBookId(bookId)
+    setReviewBookTitle(title)
+    setReviewRating(5)
+    setReviewContent('')
+    setIsReviewModalOpen(true)
+  }
+
+  // --- GỬI ĐÁNH GIÁ LÊN BACKEND ---
+  async function handleSubmittingReview() {
+    if (!reviewBookId) return
+    if (!reviewContent.trim()) {
+      toast.error('Vui lòng nhập nội dung đánh giá sản phẩm!')
+      return
+    }
+    setSubmittingReview(true)
+    try {
+      const userDisplayName = activeUser?.firstName 
+        ? `${activeUser.firstName} ${activeUser.lastName ?? ''}`.trim() 
+        : activeUser?.email || 'Khách hàng BMS'
+
+      await reviewService.addReviewToBook(reviewBookId, {
+        content: reviewContent.trim(),
+        rating: reviewRating,
+        userName: userDisplayName,
+        userId: activeUser?.id ? Number(activeUser.id) : 9999
+      })
+
+      toast.success('Gửi đánh giá thành công! Cảm ơn phản hồi của bạn.')
+      setIsReviewModalOpen(false)
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Đánh giá sản phẩm thất bại')
+    } finally {
+      setSubmittingReview(false)
+    }
+  }
+
   // --- ĐỊNH NGHĨA BADGE TRẠNG THÁI ---
   function renderStatusBadge(status: string) {
     const cleanStatus = status.toUpperCase()
@@ -298,7 +345,7 @@ export default function OrdersDashboardPage() {
               </div>
             )}
 
-            <div className="space-y-3 max-h-[680px] overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-[680px] overflow-y-auto p-1.5">
               {orders.map((order) => {
                 const isSelected = order.id === selectedOrderId
                 const date = order.orderDate ? new Date(order.orderDate).toLocaleDateString('vi-VN') : 'Mới'
@@ -306,10 +353,10 @@ export default function OrdersDashboardPage() {
                   <button
                     key={order.id}
                     onClick={() => setSelectedOrderId(order.id)}
-                    className={`w-full text-left rounded-2xl border p-4 transition-all duration-200 ${
+                    className={`w-full text-left rounded-2xl border p-4 transition-all duration-200 relative ${
                       isSelected
-                        ? 'border-amber-400 bg-amber-50/50 shadow-md ring-1 ring-amber-400 scale-[1.01]'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
+                        ? 'border-amber-400 bg-amber-50/50 shadow-md ring-2 ring-amber-400 z-10 scale-[1.01]'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm z-0'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -558,6 +605,20 @@ export default function OrdersDashboardPage() {
                               <p className="text-xs text-slate-400 mt-1 font-medium bg-slate-100 px-2 py-0.5 rounded inline-block">
                                 Số lượng: {item.quantity}
                               </p>
+                              
+                              {/* Rate/Review button if order is completed */}
+                              {currentStatus === 'COMPLETED' && (
+                                <div className="mt-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => openReviewModal(item.bookId, book?.title || `Sách #${item.bookId}`)}
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 hover:text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-full border border-amber-200 hover:bg-amber-100/60 transition shadow-sm active:scale-95"
+                                  >
+                                    <Star size={11} className="fill-amber-500 text-amber-500" />
+                                    Đánh giá sản phẩm
+                                  </button>
+                                </div>
+                              )}
                             </div>
 
                             {/* Price */}
@@ -615,6 +676,83 @@ export default function OrdersDashboardPage() {
         </div>
 
       </div>
+
+      {/* MODAL ĐÁNH GIÁ SẢN PHẨM (PREMIUM RATING INTERFACE) */}
+      {isReviewModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-2xl transition-all duration-300 transform scale-100">
+            {/* Header */}
+            <div className="mb-4 text-center">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800 border border-amber-200">
+                Đánh giá chất lượng
+              </span>
+              <h3 className="mt-2 text-xl font-bold text-slate-950 leading-tight">
+                Cảm nhận của bạn về cuốn sách?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1.5 font-medium px-4 line-clamp-2">
+                &ldquo;{reviewBookTitle}&rdquo;
+              </p>
+            </div>
+
+            {/* Star Selector */}
+            <div className="flex justify-center gap-2.5 my-5 pb-4 border-b border-slate-100">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setReviewRating(star)}
+                  className="transition transform hover:scale-110 active:scale-95 duration-100"
+                >
+                  <Star
+                    size={36}
+                    className={`${
+                      star <= reviewRating
+                        ? 'fill-amber-400 text-amber-400 drop-shadow-md'
+                        : 'text-slate-200 hover:text-slate-300'
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+
+            {/* Comment Area */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                  Viết nhận xét của bạn
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={reviewContent}
+                  onChange={(e) => setReviewContent(e.target.value)}
+                  placeholder="Hãy chia sẻ cảm nhận thực tế của bạn khi đọc cuốn sách này để giúp những độc giả khác có lựa chọn phù hợp nhất..."
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400 placeholder:text-slate-300 leading-relaxed"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  disabled={submittingReview}
+                  onClick={handleSubmittingReview}
+                  className="flex-1 rounded-full bg-slate-950 py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-slate-800 shadow-md transition disabled:opacity-50 active:scale-[0.98]"
+                >
+                  {submittingReview ? 'Đang gửi...' : 'Gửi đánh giá'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsReviewModalOpen(false)}
+                  className="rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-50 transition active:scale-[0.98]"
+                >
+                  Hủy
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

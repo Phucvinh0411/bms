@@ -21,6 +21,29 @@ import {
 } from '@/src/api/shippingAddressService'
 import { searchVietnamAddress } from '@/src/api/geocodingService'
 import { getDistrictsByProvinceCode, getProvinces, type District, type Province } from '@/src/api/vnAddressService'
+import { promotionService, type Voucher } from '@/src/api/promotionService'
+
+function calculateVoucherDiscount(voucher: Voucher, subtotal: number, baseShippingFee: number) {
+  if (voucher.minOrderValue && subtotal < voucher.minOrderValue) {
+    return 0
+  }
+  if (voucher.discountType === 'FREE_SHIPPING') {
+    const maxDiscount = voucher.maxDiscountAmount ?? 0
+    if (maxDiscount > 0) {
+      return Math.min(baseShippingFee, maxDiscount)
+    }
+    return baseShippingFee
+  }
+  if (voucher.discountType === 'PERCENTAGE') {
+    let discount = (subtotal * voucher.discountAmount) / 100
+    const maxDiscount = voucher.maxDiscountAmount ?? 0
+    if (maxDiscount > 0) {
+      discount = Math.min(discount, maxDiscount)
+    }
+    return discount
+  }
+  return voucher.discountAmount
+}
 
 const emptyForm = {
   recipientName: '',
@@ -59,6 +82,7 @@ export default function CheckoutPage() {
   const [preview, setPreview] = useState<CheckoutPreviewResponse | null>(null)
   const [subtotalFallback, setSubtotalFallback] = useState(0)
   const [voucherCode, setVoucherCode] = useState('')
+  const [availableVouchers, setAvailableVouchers] = useState<Voucher[]>([])
 
   const [addresses, setAddresses] = useState<ShippingAddress[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null)
@@ -232,6 +256,52 @@ export default function CheckoutPage() {
     }
     loadAddresses()
   }, [canLoadCheckoutData])
+
+  // Tải danh sách voucher của hệ thống
+  useEffect(() => {
+    if (!canLoadCheckoutData) return
+    ;(async () => {
+      try {
+        const list = await promotionService.getVouchers()
+        const activeList = list.filter((v) => v.status === 'ACTIVE')
+        setAvailableVouchers(activeList)
+      } catch {
+        // Im lặng
+      }
+    })()
+  }, [canLoadCheckoutData])
+
+  // Tự động tìm và lựa chọn voucher tối ưu nhất giống Shopee
+  useEffect(() => {
+    const subtotal = preview?.subtotalAmount ?? subtotalFallback
+    const shippingFee = preview?.baseShippingFee ?? 0
+    if (subtotal <= 0 || availableVouchers.length === 0) return
+
+    const validVouchers = availableVouchers
+      .map((v) => ({
+        voucher: v,
+        discount: calculateVoucherDiscount(v, subtotal, shippingFee),
+      }))
+      .filter((item) => item.discount > 0)
+
+    if (validVouchers.length === 0) return
+
+    // Sắp xếp voucher theo số tiền giảm lớn nhất
+    validVouchers.sort((a, b) => b.discount - a.discount)
+
+    const best = validVouchers[0].voucher
+
+    if (!voucherCode) {
+      setVoucherCode(best.code)
+      toast.success(
+        `Đã tự động chọn voucher tốt nhất: ${best.code} (Giảm ${
+          best.discountType === 'PERCENTAGE'
+            ? best.discountAmount + '%'
+            : formattedCurrency.format(best.discountAmount)
+        })`
+      )
+    }
+  }, [availableVouchers, subtotalFallback, preview?.subtotalAmount, preview?.baseShippingFee])
 
   useEffect(() => {
     if (!canLoadCheckoutData) {
@@ -841,11 +911,95 @@ export default function CheckoutPage() {
           </div>
 
           {/* Voucher */}
-          <div className="mt-6 rounded-2xl border border-dashed border-amber-200 bg-amber-50/70 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-amber-700"><Sparkles size={16} />Voucher giảm giá</div>
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-              <input value={voucherCode} onChange={(event) => setVoucherCode(event.target.value)} placeholder="Nhập mã giảm giá của bạn" className="w-full flex-1 rounded-full border border-amber-200 bg-white px-4 py-2 text-sm text-slate-800 shadow-sm focus:border-amber-400 focus:outline-none" />
+          <div className="mt-6 rounded-2xl border border-dashed border-amber-200 bg-amber-50/70 p-5">
+            <div className="flex items-center gap-2 text-sm font-bold text-amber-800 mb-3"><Sparkles size={16} className="text-amber-500 animate-pulse" />Mã Khuyến Mãi (Giảm Giá & Freeship)</div>
+            
+            <div className="flex flex-col gap-3 sm:flex-row mb-4">
+              <input 
+                value={voucherCode} 
+                onChange={(event) => setVoucherCode(event.target.value)} 
+                placeholder="Nhập mã giảm giá của bạn" 
+                className="w-full flex-1 rounded-full border border-amber-200 bg-white px-4 py-2 text-sm text-slate-800 shadow-sm focus:border-amber-400 focus:outline-none" 
+              />
+              {voucherCode && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVoucherCode('')
+                    toast.success('Đã hủy áp dụng voucher')
+                  }}
+                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95"
+                >
+                  Hủy chọn
+                </button>
+              )}
             </div>
+
+            {availableVouchers.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Voucher Khả Dụng Dành Cho Bạn (Nhấp để chọn):</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {availableVouchers.map((v) => {
+                    const subtotal = preview?.subtotalAmount ?? subtotalFallback
+                    const shippingFee = preview?.baseShippingFee ?? 0
+                    const discount = calculateVoucherDiscount(v, subtotal, shippingFee)
+                    const isEligible = subtotal >= v.minOrderValue
+                    const isSelected = voucherCode === v.code
+
+                    return (
+                      <button
+                        key={v.id ?? v.code}
+                        type="button"
+                        onClick={() => {
+                          if (!isEligible) {
+                            toast.error(`Đơn hàng chưa đạt giá trị tối thiểu ${formattedCurrency.format(v.minOrderValue)}`);
+                            return;
+                          }
+                          setVoucherCode(v.code)
+                          toast.success(`Đã áp dụng voucher: ${v.code}`)
+                        }}
+                        className={`flex items-center gap-3 p-3.5 rounded-2xl border text-left transition-all ${
+                          isSelected
+                            ? 'border-amber-500 bg-amber-50/50 shadow-sm ring-1 ring-amber-400'
+                            : isEligible
+                            ? 'border-slate-200 bg-white hover:border-slate-300 active:scale-[0.98]'
+                            : 'border-slate-100 bg-slate-50/60 opacity-60 cursor-not-allowed'
+                        }`}
+                      >
+                        <div className={`p-2.5 rounded-xl shrink-0 ${isSelected ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                          <Sparkles size={16} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className="font-mono text-xs font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              {v.code}
+                            </span>
+                            {isSelected && (
+                              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-bold text-emerald-800">
+                                ĐÃ CHỌN
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-700 mt-2 font-semibold leading-tight">
+                            {v.discountType === 'FREE_SHIPPING'
+                              ? `Freeship tối đa ${formattedCurrency.format(v.maxDiscountAmount || 0)}`
+                              : v.discountType === 'PERCENTAGE'
+                              ? `Giảm ${v.discountAmount}% đơn từ ${formattedCurrency.format(v.minOrderValue)}`
+                              : `Giảm ${formattedCurrency.format(v.discountAmount)} đơn từ ${formattedCurrency.format(v.minOrderValue)}`}
+                          </p>
+                          {v.description && <p className="text-[9px] text-slate-400 mt-1 truncate">{v.description}</p>}
+                          {!isEligible && (
+                            <p className="text-[9px] text-rose-500 font-bold mt-1.5 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">
+                              Cần mua thêm {formattedCurrency.format(v.minOrderValue - subtotal)} để áp dụng
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
