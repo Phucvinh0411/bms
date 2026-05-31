@@ -1,0 +1,15 @@
+event:session
+data:{"sessionId":"123"}
+
+event:thinking
+data:Đang phân tích câu hỏi...
+
+event:thinking
+data:Đang tìm kiếm sách...
+
+event:book_cards
+data:[{"id":1079,"title":"Lập Trình Java","author":"Various","price":195000,"imageUrl":"https://images.unsplash.com/photo-1515879218367-8466d910aaa4","categoryName":"Lập trình","score":0.20500000052154066},{"id":1003,"title":"English Grammar in Use","author":"Raymond Murphy","price":215000,"imageUrl":"https://covers.openlibrary.org/b/title/English%20Grammar%20in%20Use-L.jpg","categoryName":"Tiếng Anh","score":0.0},{"id":1016,"title":"Dế Mèn Phiêu Lưu Ký","author":"Tô Hoài","price":65000,"imageUrl":"https://covers.openlibrary.org/b/title/De%20Men%20Phieu%20Luu%20Ky-L.jpg","categoryName":"Tiểu thuyết","score":0.0},{"id":1005,"title":"Sapiens: Lược sử loài người","author":"Yuval Noah Harari","price":179000,"imageUrl":"https://covers.openlibrary.org/b/title/Sapiens-L.jpg","categoryName":"Lịch sử thế giới","score":0.0},{"id":1006,"title":"Dế Mèn Phiêu Lưu Ký","author":"Tô Hoài","price":65000,"imageUrl":"https://covers.openlibrary.org/b/title/De%20Men%20Phieu%20Luu%20Ky-L.jpg","categoryName":"Tiểu thuyết","score":0.0}]
+
+event:done
+data:[DONE]
+

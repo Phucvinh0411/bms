@@ -70,6 +70,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -85,6 +87,8 @@ services:
       - OLLAMA_CHAT_URL=${OLLAMA_CHAT_URL}
       - OLLAMA_CPU_URL=${OLLAMA_CPU_URL}
       - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     networks:
       - bookstore-network
 

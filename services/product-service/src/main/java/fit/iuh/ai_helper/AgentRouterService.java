@@ -7,9 +7,18 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StopWatch;
 import org.springframework.web.client.RestClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 @Service
 public class AgentRouterService {
@@ -19,6 +28,8 @@ public class AgentRouterService {
     private final HybridSearchService bookSearchService; // "Tool" cứng để lục lọi DB sách
     private final RestClient restClient;
     private final OllamaAIProperties properties;
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public AgentRouterService(RuleIntentDetector ruleDetector,
                               LlmIntentAnalyzer llmAnalyzer,
@@ -286,5 +297,125 @@ public class AgentRouterService {
 
     private String safeText(String value) {
         return cleanText(value) == null ? "N/A" : cleanText(value);
+    }
+
+    /**
+     * Streaming version: Gửi từng token qua callback thay vì đợi toàn bộ.
+     */
+    public void routeAndExecuteStreaming(String userMessage,
+                                          List<OllamaMessageDto> history,
+                                          Consumer<SseChunk> onChunk) {
+        StopWatch sw = new StopWatch("RAG Streaming Profiler");
+
+        // ─── Step 0: Intent Detection ───
+        sw.start("0. Intent Detection");
+        onChunk.accept(SseChunk.thinking("Đang phân tích câu hỏi..."));
+        IntentResponseDto extraction = resolveIntentResponse(userMessage);
+        sw.stop();
+
+        String systemPrompt = buildBaseSystemPrompt(extraction);
+        List<SemanticBookSearchDTO> foundBooks = List.of();
+
+        if (Intent.BOOK_SEARCH.name().equalsIgnoreCase(extraction.getIntent())) {
+            String cleanedKeyword = safeKeyword(extraction.getKeyword(), userMessage);
+            BigDecimal maxPrice = extraction.getMaxPrice();
+
+            // ─── Step 1+2: Embed + Search ───
+            onChunk.accept(SseChunk.thinking("Đang tìm kiếm sách..."));
+            sw.start("1+2. Hybrid Search");
+            try {
+                float[] queryEmbedding = bookSearchService.generateQueryEmbedding(cleanedKeyword);
+                foundBooks = bookSearchService.searchByVector(
+                    bookSearchService.toVectorLiteral(queryEmbedding),
+                    cleanedKeyword, 5, 0, null, null, maxPrice
+                );
+            } catch (Exception e) {
+                foundBooks = bookSearchService.searchByText(
+                    cleanedKeyword, 5, 0, null, null, maxPrice
+                );
+            }
+            sw.stop();
+
+            // ─── Step 2.5: Gửi BookCards qua Generative UI ───
+            if (!foundBooks.isEmpty()) {
+                List<Map<String, Object>> bookCards = foundBooks.stream()
+                    .map(this::toBookCard)
+                    .toList();
+                onChunk.accept(SseChunk.bookCards(bookCards));
+            }
+
+            sw.start("3. Build Context");
+            String textContext = buildBookContext(foundBooks);
+            systemPrompt = buildRagPrompt(extraction, textContext);
+            sw.stop();
+        } else if (Intent.ORDER_CHECKING.name().equalsIgnoreCase(extraction.getIntent())) {
+            systemPrompt = buildOrderCheckingPrompt(extraction);
+        }
+
+        // ─── Step 4: Streaming Chat ───
+        sw.start("4. Streaming Chat");
+        streamChatResponse(systemPrompt, userMessage, history, onChunk);
+        sw.stop();
+
+        System.out.println("\n" + sw.prettyPrint());
+    }
+
+    private void streamChatResponse(String systemPrompt,
+                                     String userMessage,
+                                     List<OllamaMessageDto> history,
+                                     Consumer<SseChunk> onChunk) {
+        String model = properties.getChatModel() == null || properties.getChatModel().isBlank()
+            ? "qwen2.5" : properties.getChatModel().trim();
+
+        List<OllamaMessageDto> messages = new ArrayList<>();
+        messages.add(new OllamaMessageDto("system", systemPrompt));
+        if (history != null) {
+            messages.addAll(history);
+        }
+        messages.add(new OllamaMessageDto("user", userMessage));
+
+        var requestBody = new OllamaRequestDto(model, messages, true); // stream = TRUE
+
+        try {
+            restClient.post()
+                .uri("/api/chat")
+                .body(requestBody)
+                .exchange((clientRequest, clientResponse) -> {
+                    try (var reader = new BufferedReader(
+                            new InputStreamReader(clientResponse.getBody(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            if (line.isBlank()) continue;
+                            try {
+                                OllamaResponseDto chunk = objectMapper.readValue(line, OllamaResponseDto.class);
+                                if (chunk.getMessage() != null && chunk.getMessage().getContent() != null) {
+                                    String token = chunk.getMessage().getContent();
+                                    if (!token.isEmpty()) {
+                                        onChunk.accept(SseChunk.text(token));
+                                    }
+                                }
+                                if (chunk.isDone()) break;
+                            } catch (Exception parseErr) {
+                                // Skip malformed line
+                            }
+                        }
+                    }
+                    return null;
+                });
+        } catch (Exception e) {
+            onChunk.accept(SseChunk.text("Xin lỗi, hệ thống AI đang bận. Vui lòng thử lại!"));
+        }
+    }
+
+    private Map<String, Object> toBookCard(SemanticBookSearchDTO book) {
+        Map<String, Object> card = new LinkedHashMap<>();
+        card.put("id", book.id());
+        card.put("title", safeText(book.title()));
+        card.put("author", safeText(book.author()));
+        card.put("price", book.price() != null ? book.price().longValue() : 0);
+        card.put("imageUrl", book.imageUrl() != null ? book.imageUrl() : "/placeholder-book.jpg");
+        card.put("categoryName", safeText(book.categoryName()));
+        card.put("score", book.combinedScore() != null ? book.combinedScore() : 0.0);
+        return card;
     }
 }
