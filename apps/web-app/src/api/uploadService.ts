@@ -1,6 +1,7 @@
 import { handleResponse } from './apiConfig';
 
-const UPLOAD_URL = 'http://localhost/api/v1/products/api/upload';
+const productApiBase = process.env.NEXT_PUBLIC_PRODUCT_SERVICE_URL || 'http://localhost/api/v1/products';
+const UPLOAD_URL = `${productApiBase}/api/upload`;
 
 export const uploadService = {
   uploadFile: async (file: File, folder: string = 'book-images'): Promise<string> => {

@@ -5,7 +5,8 @@ export interface ReportSummary {
   message: string;
 }
 
-const REPORT_BASE_URL = 'http://localhost/api/v1/reports/api/reports';
+const reportApiBase = process.env.NEXT_PUBLIC_REPORT_SERVICE_URL || 'http://localhost/api/v1/reports';
+const REPORT_BASE_URL = `${reportApiBase}/api/reports`;
 
 export const reportService = {
   async getSummary(): Promise<ReportSummary> {

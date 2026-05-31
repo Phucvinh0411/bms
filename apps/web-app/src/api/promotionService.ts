@@ -11,7 +11,8 @@ export interface Voucher {
   description?: string;
 }
 
-const PROMOTION_BASE_URL = 'http://localhost/api/v1/promotions/api/vouchers';
+const promotionApiBase = process.env.NEXT_PUBLIC_PROMOTION_SERVICE_URL || 'http://localhost/api/v1/promotions';
+const PROMOTION_BASE_URL = `${promotionApiBase}/api/vouchers`;
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {

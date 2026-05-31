@@ -4,7 +4,7 @@ import type { CheckoutRequest, CheckoutPreviewResponse, CheckoutResponse } from 
 const configuredBase = process.env.NEXT_PUBLIC_ORDER_SERVICE_URL || process.env.BACKEND_API_BASE_URL
 const DEFAULT_BASES = ['http://localhost/api/v1/orders']
 const BACKEND_BASE_CANDIDATES = Array.from(
-  new Set([...DEFAULT_BASES, ...(configuredBase ? [configuredBase] : [])])
+  new Set([...(configuredBase ? [configuredBase] : []), ...DEFAULT_BASES])
 )
 const FALLBACK_STATUSES = new Set([404, 502, 503, 504])
 
