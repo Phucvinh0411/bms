@@ -644,7 +644,7 @@ export default function OrdersDashboardPage() {
                           </span>
                         </div>
 
-                        {(currentStatus === 'PENDING' || currentStatus === 'AWAITING_PAYMENT') && (
+                        {(currentStatus === 'PENDING' || currentStatus === 'AWAITING_PAYMENT') ? (
                           <button
                             type="button"
                             onClick={() => handleCancelOrder(selectedOrder.id)}
@@ -653,6 +653,13 @@ export default function OrdersDashboardPage() {
                           >
                             {actionLoading ? 'Đang hủy...' : 'Hủy đơn'}
                           </button>
+                        ) : !isCanceled && (
+                          <span 
+                            className="cursor-help text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl"
+                            title="Chỉ đơn hàng ở trạng thái Chờ xử lý hoặc Chờ thanh toán mới được phép hủy"
+                          >
+                            Không thể hủy
+                          </span>
                         )}
                       </div>
                     </div>

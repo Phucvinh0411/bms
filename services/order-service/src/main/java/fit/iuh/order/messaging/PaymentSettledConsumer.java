@@ -49,9 +49,11 @@ public class PaymentSettledConsumer {
             if (order != null) {
                 System.out.println("RabbitMQ Consumer: Đang tiến hành cập nhật bất đồng bộ cho đơn hàng #" + orderId);
                 
-                // 1. Giữ trạng thái đơn hàng ở PENDING (Chờ xử lý) sau khi thanh toán thành công theo yêu cầu của khách hàng
-                if (order.getStatus() == OrderStatus.PENDING) {
-                    System.out.println("RabbitMQ Consumer: Giữ đơn hàng #" + orderId + " ở trạng thái PENDING (Chờ xử lý).");
+                // 1. Chuyển trạng thái đơn hàng từ AWAITING_PAYMENT sang PENDING (Chờ xử lý) sau khi thanh toán thành công
+                if (order.getStatus() == OrderStatus.AWAITING_PAYMENT || order.getStatus() == OrderStatus.PENDING) {
+                    order.setStatus(OrderStatus.PENDING);
+                    orderRepository.save(order);
+                    System.out.println("RabbitMQ Consumer: Đã chuyển đơn hàng #" + orderId + " sang trạng thái PENDING (Chờ xử lý).");
                 }
 
                 // 2. Cập nhật Payment Transaction sang trạng thái PAID

@@ -164,9 +164,7 @@ export default function CartPage() {
 
   const backendSubtotal = Number(cart?.totalEstimated ?? 0)
   const subtotal = Number.isFinite(backendSubtotal) && backendSubtotal > 0 ? backendSubtotal : computedSubtotal
-  const tax = subtotal * 0.05
-  const shipping = subtotal > 0 ? 5 : 0
-  const total = subtotal + tax + shipping
+  const total = subtotal
 
   const formatCurrency = (value: number) => `${value.toLocaleString('en-US')}đ`
 
@@ -282,26 +280,33 @@ export default function CartPage() {
           <aside className="h-fit rounded-2xl border border-[#e4e8f0] bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
             <h2 className="mb-5 text-xl font-semibold text-slate-900">Tóm tắt đơn hàng</h2>
 
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between text-slate-600">
-                <span>Tạm tính</span>
-                <span className="font-medium text-slate-900">{formatCurrency(subtotal)}</span>
-              </div>
-              {/* <div className="flex justify-between text-slate-600">
-                <span>Thuế</span>
-                <span className="font-medium text-slate-900">{formatCurrency(tax)}</span>
-              </div> */}
-              {/* <div className="flex justify-between text-slate-600">
-                <span>Phí giao hàng</span>
-                <span className="font-medium text-slate-900">{formatCurrency(shipping)}</span>
-              </div> */}
+            <div className="space-y-4 mb-5 max-h-60 overflow-y-auto pr-1">
+              {(cart?.items ?? []).map((it) => {
+                const book = booksById[it.bookId]
+                const title = book?.title ?? `Sách #${it.bookId}`
+                const price = Number(book?.price ?? 0)
+                return (
+                  <div key={it.id} className="flex justify-between items-start gap-3 text-xs border-b border-slate-100/50 pb-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-slate-800 truncate leading-tight">{title}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {formatCurrency(price)} x {it.quantity}
+                      </p>
+                    </div>
+                    <span className="font-bold text-slate-700 whitespace-nowrap text-right">
+                      {formatCurrency(price * it.quantity)}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
 
-            <hr className="my-5 border-slate-200" />
 
-            <div className="mb-5 flex justify-between text-lg font-semibold text-slate-900">
+            <hr className="my-4 border-slate-200" />
+
+            <div className="mb-5 flex justify-between text-lg font-bold text-slate-950">
               <span>Tổng cộng</span>
-              <span>{formatCurrency(total)}</span>
+              <span className="text-amber-700">{formatCurrency(total)}</span>
             </div>
 
             <Link

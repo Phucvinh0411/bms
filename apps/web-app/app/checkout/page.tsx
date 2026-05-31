@@ -103,7 +103,7 @@ export default function CheckoutPage() {
   const [sseMessage, setSseMessage] = useState('')
 
   const statusParam = searchParams.get('status')
-  const orderIdParam = searchParams.get('orderId')
+  const orderIdParam = searchParams.get('orderId') || searchParams.get('orderCode')
   const qrCodeParam = searchParams.get('qrCode')
   const checkoutUrlParam = searchParams.get('checkoutUrl')
 

@@ -210,20 +210,20 @@ public class OrderService {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng với ID: " + id));
 
+        // Chỉ cho phép hủy khi đơn hàng ở trạng thái Chờ xử lý (PENDING) hoặc Chờ thanh toán (AWAITING_PAYMENT)
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.AWAITING_PAYMENT) {
+            throw new IllegalStateException("Chỉ có đơn hàng ở trạng thái Chờ xử lý hoặc Chờ thanh toán mới được phép hủy!");
+        }
+
         // Xác định State hiện tại bằng State Pattern
         OrderState currentState;
         switch (order.getStatus()) {
             case PENDING:
                 currentState = new PendingState();
                 break;
-            case SHIPPING:
-                currentState = new ShippingState();
+            case AWAITING_PAYMENT:
+                currentState = new PendingState();
                 break;
-            case COMPLETED:
-                currentState = new CompletedState();
-                break;
-            case CANCELED:
-                throw new IllegalStateException("Đơn hàng này đã ở trạng thái hủy");
             default:
                 currentState = new PendingState();
         }

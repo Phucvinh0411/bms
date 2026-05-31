@@ -78,7 +78,20 @@ public class PayOSPaymentStrategy implements PaymentStrategy {
                 if (data != null) {
                     System.out.println("PayOS GET data fields: " + data);
                     if ("PENDING".equalsIgnoreCase((String) data.get("status"))) {
-                        System.out.println("PayOS: Found existing active payment link for Order #" + orderCode + ", reusing it. checkoutUrl = " + data.get("checkoutUrl"));
+                        // PayOS GET API chỉ trả về ID giao dịch ('id') chứ không trả về 'checkoutUrl'
+                        // Cần tự động reconstruct checkoutUrl từ 'id' để frontend có thể chuyển hướng quét mã QR
+                        String checkoutUrl = (String) data.get("checkoutUrl");
+                        if (checkoutUrl == null || checkoutUrl.isEmpty()) {
+                            String paymentLinkId = (String) data.get("id");
+                            if (paymentLinkId != null && !paymentLinkId.isEmpty()) {
+                                checkoutUrl = "https://pay.payos.vn/web/" + paymentLinkId;
+                                Map<String, Object> mutableData = new java.util.HashMap<>(data);
+                                mutableData.put("checkoutUrl", checkoutUrl);
+                                System.out.println("PayOS: Found existing active payment link for Order #" + orderCode + ", reconstructed checkoutUrl = " + checkoutUrl);
+                                return mutableData;
+                            }
+                        }
+                        System.out.println("PayOS: Found existing active payment link for Order #" + orderCode + ", reusing it. checkoutUrl = " + checkoutUrl);
                         return data;
                     }
                 }

@@ -153,6 +153,33 @@ public class PaymentController {
             emitter.send(SseEmitter.event()
                     .name("INIT")
                     .data("Kết nối thành công! Đang chờ thanh toán đơn hàng #" + orderId));
+
+            // Kiểm tra xem đơn hàng đã được thanh toán/xác nhận từ trước chưa (để tránh lỗi client kết nối muộn và bị treo)
+            boolean isAlreadyPaid = false;
+            var orderOpt = orderRepository.findById(orderId);
+            if (orderOpt.isPresent()) {
+                Order order = orderOpt.get();
+                 if (order.getStatus() == OrderStatus.CONFIRMED 
+                        || order.getStatus() == OrderStatus.SHIPPING 
+                        || order.getStatus() == OrderStatus.COMPLETED) {
+                    isAlreadyPaid = true;
+                }
+            }
+            if (!isAlreadyPaid && paymentTransactionRepository != null) {
+                var txOpt = paymentTransactionRepository.findByIdAndIsDeletedFalse(orderId);
+                if (txOpt.isPresent() && txOpt.get().getStatus() == fit.iuh.order.order.core.model.PaymentStatus.PAID) {
+                    isAlreadyPaid = true;
+                }
+            }
+
+            if (isAlreadyPaid) {
+                System.out.println("PaymentController SSE: Đơn hàng #" + orderId + " đã được thanh toán từ trước. Gửi ngay sự kiện PAID.");
+                emitter.send(SseEmitter.event()
+                        .name("PAYMENT_STATUS")
+                        .data(Map.of("orderId", orderId, "status", "PAID")));
+                emitter.complete();
+                this.sseEmitters.remove(orderId);
+            }
         } catch (IOException e) {
             emitter.completeWithError(e);
         }
