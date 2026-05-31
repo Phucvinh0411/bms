@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ShoppingCart, Check, Loader2 } from 'lucide-react';
 import { useAuth } from '@/src/auth/context';
-import { cartApiService } from '@/src/api/cartApiService';
+import { addItem } from '@/src/cart/services/cartService';
 import toast from 'react-hot-toast';
 import type { BookCard } from '../hooks/useStreamChat';
 
@@ -23,16 +23,17 @@ export function BookSuggestionCard({ book }: Props) {
 
     setAddState('loading');
     try {
-      await cartApiService.add(
-        { userId: activeUser.id, bookId: book.id, quantity: 1 },
-        activeToken
-      );
+      await addItem({
+        userId: activeUser.id,
+        bookId: book.id,
+        quantity: 1
+      });
       setAddState('added');
       toast.success(`Đã thêm "${book.title}" vào giỏ hàng!`);
       setTimeout(() => setAddState('idle'), 2000);
     } catch (err: any) {
       setAddState('idle');
-      toast.error(err?.response?.data?.message || 'Không thể thêm vào giỏ hàng');
+      toast.error(err?.message || 'Không thể thêm vào giỏ hàng');
     }
   };
 
