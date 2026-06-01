@@ -13,7 +13,6 @@ ENV TZ=UTC
 
 # Copy pom.xml first to leverage Docker layer caching
 COPY pom.xml .
-RUN mvn -B -ntp dependency:go-offline
 
 # Copy source code and build
 COPY src ./src
