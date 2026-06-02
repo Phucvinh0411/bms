@@ -382,10 +382,12 @@ const persistSession = useCallback(
         return userProfile;
       } catch (err: any) {
         clearAuthTokens();
-        const errorMessage =
-          err?.error?.message ||
-          err?.message ||
-          "Login failed. Please try again.";
+        let errorMessage = "Login failed. Please try again.";
+        if (typeof err === 'string') {
+          errorMessage = err;
+        } else {
+          errorMessage = err?.error?.message || err?.message || errorMessage;
+        }
         setError(errorMessage);
         throw err;
       } finally {
@@ -410,10 +412,14 @@ const persistSession = useCallback(
         });
       } catch (err: any) {
         clearAuthTokens();
-        const errorMessage =
-          err?.error?.message ||
-          err?.message ||
-          "Registration failed. Please try again.";
+        let errorMessage = "Registration failed. Please try again.";
+        if (typeof err === 'string') {
+          errorMessage = err;
+        } else if (err?.error?.message || err?.message) {
+          errorMessage = err?.error?.message || err?.message;
+        } else if (err?.errors && Array.isArray(err?.errors)) {
+          errorMessage = err.errors.map((e: any) => e.defaultMessage || e.message).join(", ");
+        }
         setError(errorMessage);
         throw err;
       } finally {

@@ -215,7 +215,7 @@ services:
     image: ollama/ollama:0.30.0-rc12
     container_name: bookstore-ai-engine-gpu
     restart: unless-stopped
-    # gpus: all # Commented out because WSL/host environment lacks NVIDIA GPU/adapters
+    gpus: all # Commented out because WSL/host environment lacks NVIDIA GPU/adapters
     ports:
       - "11434:11434"
     environment:
