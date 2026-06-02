@@ -21,7 +21,8 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-const CHAT_API_URL = 'http://localhost/api/v1/products/api/v1/ai/chat/stream';
+const productApiBase = process.env.NEXT_PUBLIC_PRODUCT_SERVICE_URL || 'http://localhost/api/v1/products';
+const CHAT_API_URL = `${productApiBase}/api/v1/ai/chat/stream`;
 
 export function useStreamChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);

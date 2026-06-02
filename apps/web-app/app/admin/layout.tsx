@@ -17,7 +17,7 @@ const menuItems = [
   { label: 'Voucher', href: '/admin/vouchers', icon: TicketPercent },
   { label: 'Báo cáo', href: '/admin/reports', icon: BarChart3 },
   { label: 'Thêm sách mới', href: '/add-book', icon: PlusCircle },
-  { label: 'Quản lý đơn hàng', href: '/admin/orders', icon: ShoppingCart, disabled: true },
+  { label: 'Quản lý đơn hàng', href: '/admin/orders', icon: ShoppingCart },
   { label: 'Người dùng', href: '/admin/users', icon: Users, disabled: true },
   { label: 'Cài đặt', href: '/admin/settings', icon: Settings, disabled: true },
 ];

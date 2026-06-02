@@ -79,4 +79,16 @@ public class OrderController {
         }
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body("Scheduler not available");
     }
+
+    @PostMapping("/{id}/confirm")
+    public ResponseEntity<OrderResponse> confirmOrder(@PathVariable Long id) {
+        return ResponseEntity.ok(orderService.confirmOrder(id));
+    }
+
+    @PutMapping("/{id}/shipping-fee")
+    public ResponseEntity<OrderResponse> updateShippingFee(
+            @PathVariable Long id,
+            @RequestParam java.math.BigDecimal shippingFee) {
+        return ResponseEntity.ok(orderService.updateShippingFee(id, shippingFee));
+    }
 }

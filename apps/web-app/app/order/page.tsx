@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/src/auth/context'
 import { getEffectiveUserId } from '@/src/cart/utils/userContext'
-import { getOrders, cancelOrder, changeOrderPaymentMethod } from '@/src/api/checkoutService'
+import { getOrders, cancelOrder, changeOrderPaymentMethod, confirmOrder } from '@/src/api/checkoutService'
 import { bookService } from '@/src/api/bookService'
 import type { CheckoutResponse } from '@/src/checkout/types'
 import { reviewService } from '@/src/api/reviewService'
@@ -43,6 +43,8 @@ export default function OrdersDashboardPage() {
   const { isSignedIn, isLoading: authLoading, activeUser } = useAuth()
   
   const [orders, setOrders] = useState<CheckoutResponse[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null)
@@ -54,10 +56,56 @@ export default function OrdersDashboardPage() {
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewContent, setReviewContent] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+
+  // State cho Hộp thoại Xác nhận (Custom Confirm Modal)
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean
+    title: string
+    message: string
+    onConfirm: () => void
+    confirmText?: string
+    cancelText?: string
+    isDangerous?: boolean
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  })
   
   // Cache để lưu thông tin sách đã load, tránh gọi lại nhiều lần
   const [booksCache, setBooksCache] = useState<Record<number, ResolvedBook>>({})
   const [loadingBooks, setLoadingBooks] = useState<Record<number, boolean>>({})
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter((o) => {
+      // 1. Filter by Status
+      if (statusFilter !== 'ALL') {
+        const orderStatus = o.status?.toUpperCase() || ''
+        if (statusFilter === 'CANCELLED') {
+          if (orderStatus !== 'CANCELLED' && orderStatus !== 'CANCELED') return false
+        } else if (orderStatus !== statusFilter) {
+          return false
+        }
+      }
+      
+      // 2. Filter by Search Query
+      if (!searchQuery.trim()) return true
+      const query = searchQuery.toLowerCase().trim()
+      
+      if (String(o.id).includes(query)) return true
+      if (o.status?.toLowerCase().includes(query)) return true
+      if (o.shippingAddress?.toLowerCase().includes(query)) return true
+      
+      const hasBookTitle = o.items?.some((item) => {
+        const book = booksCache[item.bookId]
+        return book?.title?.toLowerCase().includes(query)
+      })
+      if (hasBookTitle) return true
+      
+      return false
+    })
+  }, [orders, searchQuery, statusFilter, booksCache])
 
   const orderIdParam = searchParams.get('orderId')
   const statusParam = searchParams.get('status')
@@ -264,24 +312,58 @@ export default function OrdersDashboardPage() {
     }
   }
 
-  // --- HỦY ĐƠN HÀNG ---
-  async function handleCancelOrder(id: number) {
-    const confirmed = window.confirm(`Bạn có chắc chắn muốn HỦY đơn hàng #${id} không?`)
-    if (!confirmed) return
+  // --- HỦY ĐƠN HÀNG (CUSTOM CONFIRM MODAL) ---
+  function triggerCancelOrder(id: number) {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Hủy đơn hàng',
+      message: `Bạn có chắc chắn muốn HỦY đơn hàng #${id} không? Hành động hủy đơn hàng này không thể được hoàn tác sau khi thực thi.`,
+      confirmText: 'Xác nhận hủy',
+      cancelText: 'Quay lại',
+      isDangerous: true,
+      onConfirm: async () => {
+        setActionLoading(true)
+        try {
+          await cancelOrder(id)
+          toast.success(`Đã hủy đơn hàng #${id} thành công!`)
+          await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
+        } catch (error: unknown) {
+          const msg = typeof error === 'object' && error !== null && 'message' in error
+            ? (error as { message: string }).message
+            : 'Hủy đơn hàng thất bại'
+          toast.error(msg)
+        } finally {
+          setActionLoading(false)
+        }
+      }
+    })
+  }
 
-    setActionLoading(true)
-    try {
-      await cancelOrder(id)
-      toast.success(`Đã hủy đơn hàng #${id} thành công!`)
-      await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
-    } catch (error: unknown) {
-      const msg = typeof error === 'object' && error !== null && 'message' in error
-        ? (error as { message: string }).message
-        : 'Hủy đơn hàng thất bại'
-      toast.error(msg)
-    } finally {
-      setActionLoading(false)
-    }
+  // --- ADMIN XÁC NHẬN ĐƠN HÀNG (CUSTOM CONFIRM MODAL) ---
+  function triggerConfirmOrder(id: number) {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Duyệt đơn hàng (Admin)',
+      message: `Bạn có chắc chắn muốn XÁC NHẬN duyệt đơn hàng #${id} không? Trạng thái sẽ cập nhật sang Đã duyệt.`,
+      confirmText: 'Duyệt đơn ngay',
+      cancelText: 'Hủy bỏ',
+      isDangerous: false,
+      onConfirm: async () => {
+        setActionLoading(true)
+        try {
+          await confirmOrder(id)
+          toast.success(`Đã xác nhận đơn hàng #${id} thành công!`)
+          await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
+        } catch (error: unknown) {
+          const msg = typeof error === 'object' && error !== null && 'message' in error
+            ? (error as { message: string }).message
+            : 'Xác nhận đơn hàng thất bại'
+          toast.error(msg)
+        } finally {
+          setActionLoading(false)
+        }
+      }
+    })
   }
 
   // --- MỞ MODAL ĐÁNH GIÁ ---
@@ -425,6 +507,70 @@ export default function OrdersDashboardPage() {
               Lịch sử đặt hàng ({orders.length})
             </h2>
 
+            {/* Search and Status Filter Container */}
+            {orders.length > 0 && (
+              <div className="space-y-2 px-1">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tìm mã ĐH, sách, sđt, tên..."
+                    className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 pl-9 text-xs shadow-sm transition focus:border-[#a28354] focus:outline-none focus:ring-1 focus:ring-[#a28354] text-slate-900 placeholder-slate-400"
+                  />
+                  <svg
+                    className="absolute left-4 top-2.5 h-3.5 w-3.5 text-slate-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    ></path>
+                  </svg>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-4 top-2 h-4 w-4 rounded-full bg-slate-100 text-[10px] font-bold text-slate-500 hover:bg-slate-200 flex items-center justify-center transition"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Status Filter Tabs */}
+                <div className="flex flex-wrap gap-1 pt-1.5 border-t border-slate-100">
+                  {[
+                    { key: 'ALL', label: 'Tất cả' },
+                    { key: 'PENDING', label: 'Chờ duyệt' },
+                    { key: 'AWAITING_PAYMENT', label: 'Chờ thanh toán' },
+                    { key: 'SHIPPING', label: 'Đang giao' },
+                    { key: 'COMPLETED', label: 'Hoàn tất' },
+                    { key: 'CANCELLED', label: 'Đã hủy' }
+                  ].map((tab) => {
+                    const isActive = statusFilter === tab.key
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => setStatusFilter(tab.key)}
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold transition duration-150 shadow-sm border ${
+                          isActive
+                            ? 'bg-[#a28354] text-white border-[#a28354]'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {loading && (
               <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-400">
                 Đang tải danh sách đơn hàng...
@@ -441,8 +587,14 @@ export default function OrdersDashboardPage() {
               </div>
             )}
 
+            {!loading && orders.length > 0 && filteredOrders.length === 0 && (
+              <div className="rounded-3xl border border-dashed border-slate-200 bg-white/80 p-8 text-center text-xs text-slate-500">
+                Không tìm thấy đơn hàng phù hợp.
+              </div>
+            )}
+
             <div className="space-y-3 max-h-[680px] overflow-y-auto p-1.5">
-              {orders.map((order) => {
+              {filteredOrders.map((order) => {
                 const isSelected = order.id === selectedOrderId
                 const date = order.orderDate ? new Date(order.orderDate).toLocaleDateString('vi-VN') : 'Mới'
                 return (
@@ -705,7 +857,7 @@ export default function OrdersDashboardPage() {
                         {(currentStatus === 'PENDING' || currentStatus === 'AWAITING_PAYMENT') ? (
                           <button
                             type="button"
-                            onClick={() => handleCancelOrder(selectedOrder.id)}
+                            onClick={() => triggerCancelOrder(selectedOrder.id)}
                             disabled={actionLoading}
                             className="rounded-xl bg-rose-50 border border-rose-100 px-4 py-2 text-xs font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-100 hover:border-rose-200 transition disabled:opacity-50 shadow-sm hover:shadow active:scale-[0.98]"
                           >
@@ -814,6 +966,32 @@ export default function OrdersDashboardPage() {
                     </div>
                   </div>
 
+                  {/* ADMIN CONTROL PANEL */}
+                  {activeUser?.role === 'ADMIN' && (
+                    <div className="rounded-3xl border border-rose-200 bg-rose-50/20 p-5 space-y-4 text-left shadow-sm">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-rose-700 flex items-center gap-2 border-b border-rose-200/50 pb-2">
+                        🛡️ Quản trị viên (Admin Tools)
+                      </h3>
+                      
+                      <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center justify-between">
+                        {/* 1. Xác nhận đơn hàng */}
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-slate-700">Trạng thái đơn hàng</p>
+                          <p className="text-[10px] text-slate-500">Xác nhận đơn hàng mới và chuyển trạng thái thành CONFIRMED.</p>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          disabled={actionLoading || (selectedOrder.status !== 'PENDING' && selectedOrder.status !== 'AWAITING_PAYMENT')}
+                          onClick={() => triggerConfirmOrder(selectedOrder.id)}
+                          className="px-4 py-2 rounded-full text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md hover:shadow-lg disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition shrink-0 self-start sm:self-center"
+                        >
+                          {selectedOrder.status === 'CONFIRMED' ? '✓ Đã xác nhận' : 'Xác nhận đơn hàng'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               )
             })() : (
@@ -904,6 +1082,49 @@ export default function OrdersDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* CUSTOM CONFIRMATION MODAL */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-sm transform overflow-hidden rounded-3xl bg-white p-6 shadow-2xl transition-all border border-slate-100 animate-scale-up text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-full ${confirmModal.isDangerous ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-blue-100 text-blue-600'}`}>
+                <AlertCircle size={20} />
+              </div>
+              <h3 className="text-sm font-black text-slate-900">
+                {confirmModal.title}
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {confirmModal.message}
+            </p>
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-full text-[11px] font-bold text-slate-500 hover:bg-slate-50 transition border border-slate-200"
+              >
+                {confirmModal.cancelText || 'Hủy bỏ'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  confirmModal.onConfirm()
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                }}
+                className={`px-4 py-2 rounded-full text-[11px] font-bold text-white transition shadow ${
+                  confirmModal.isDangerous
+                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-200'
+                    : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
+                }`}
+              >
+                {confirmModal.confirmText || 'Đồng ý'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

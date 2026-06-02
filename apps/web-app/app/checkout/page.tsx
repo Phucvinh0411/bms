@@ -388,6 +388,20 @@ export default function CheckoutPage() {
       return
     }
 
+    // Tên không chứa ký tự đặc biệt (chỉ chứa chữ cái tiếng Việt/Anh, số và khoảng trắng)
+    const nameRegex = /^[a-zA-Z0-9À-ỹ\s]+$/
+    if (!nameRegex.test(addressForm.recipientName.trim())) {
+      toast.error('Tên người nhận không được chứa ký tự đặc biệt')
+      return
+    }
+
+    // Số điện thoại phải là đúng 10 chữ số
+    const phoneRegex = /^\d{10}$/
+    if (!phoneRegex.test(addressForm.phoneNumber.trim())) {
+      toast.error('Số điện thoại phải bao gồm đúng 10 chữ số')
+      return
+    }
+
     if (!province || !district) {
       toast.error('Vui lòng chọn tỉnh/thành và quận/huyện')
       return

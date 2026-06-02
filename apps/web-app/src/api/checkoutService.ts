@@ -210,3 +210,168 @@ export async function changeOrderPaymentMethod(
   }
   throw lastError
 }
+
+export async function confirmOrder(id: number | string): Promise<CheckoutResponse> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const { submitUrls } = buildOrderApiCandidates(base)
+    for (let j = 0; j < submitUrls.length; j++) {
+      const url = `${submitUrls[j]}/${id}/confirm`
+      try {
+        const res = await axios.post(url, {}, { headers })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === submitUrls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}
+
+export async function updateShippingFee(id: number | string, shippingFee: number): Promise<CheckoutResponse> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const { submitUrls } = buildOrderApiCandidates(base)
+    for (let j = 0; j < submitUrls.length; j++) {
+      const url = `${submitUrls[j]}/${id}/shipping-fee`
+      try {
+        const res = await axios.put(url, null, {
+          headers,
+          params: { shippingFee }
+        })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === submitUrls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}
+
+function buildShippingRulesUrlCandidates(base: string) {
+  const normalized = trimSlash(base)
+  if (normalized.endsWith('/orders')) {
+    return [normalized.replace(/\/orders$/, '/shipping-rules')]
+  }
+  return [
+    `${normalized}/api/shipping-rules`,
+    `${normalized}/shipping-rules`
+  ]
+}
+
+export interface ShippingRule {
+  id?: number
+  minDistance: number
+  maxDistance: number | null
+  fee: number
+}
+
+export async function getShippingRules(): Promise<ShippingRule[]> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const urls = buildShippingRulesUrlCandidates(base)
+    for (let j = 0; j < urls.length; j++) {
+      const url = urls[j]
+      try {
+        const res = await axios.get(url, { headers })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === urls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}
+
+export async function createShippingRule(rule: ShippingRule): Promise<ShippingRule> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const urls = buildShippingRulesUrlCandidates(base)
+    for (let j = 0; j < urls.length; j++) {
+      const url = urls[j]
+      try {
+        const res = await axios.post(url, rule, { headers })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === urls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}
+
+export async function updateShippingRule(id: number | string, rule: ShippingRule): Promise<ShippingRule> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const urls = buildShippingRulesUrlCandidates(base)
+    for (let j = 0; j < urls.length; j++) {
+      const url = `${urls[j]}/${id}`
+      try {
+        const res = await axios.put(url, rule, { headers })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === urls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}
+
+export async function deleteShippingRule(id: number | string): Promise<void> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const urls = buildShippingRulesUrlCandidates(base)
+    for (let j = 0; j < urls.length; j++) {
+      const url = `${urls[j]}/${id}`
+      try {
+        await axios.delete(url, { headers })
+        return
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === urls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}
