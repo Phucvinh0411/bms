@@ -23,7 +23,10 @@ export const orderService = {
       const url = buildCheckPurchaseUrl(base, userId, bookId);
       try {
         const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const headers: Record<string, string> = { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
         const response = await axios.get(url, { headers });
@@ -35,6 +38,7 @@ export const orderService = {
         if (err.response && [404, 502, 503, 504].includes(err.response.status)) {
             continue;
         }
+        if (err.response) throw err;
       }
     }
     

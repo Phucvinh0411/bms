@@ -54,7 +54,10 @@ async function postWithRetry(url: string, body: any, headers: Record<string, str
 
 function getAuthHeaders() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = { 
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true'
+  }
   if (token) headers['Authorization'] = `Bearer ${token}`
   return headers
 }
@@ -76,7 +79,7 @@ export async function previewOrder(payload: CheckoutRequest): Promise<CheckoutPr
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === previewUrls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -100,7 +103,7 @@ export async function submitOrder(payload: CheckoutRequest): Promise<CheckoutRes
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === submitUrls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -124,7 +127,7 @@ export async function getOrders(): Promise<CheckoutResponse[]> {
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === submitUrls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -148,7 +151,7 @@ export async function getOrderById(id: number | string): Promise<CheckoutRespons
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === submitUrls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -172,7 +175,7 @@ export async function cancelOrder(id: number | string): Promise<CheckoutResponse
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === submitUrls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -204,7 +207,7 @@ export async function changeOrderPaymentMethod(
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === submitUrls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -228,7 +231,7 @@ export async function confirmOrder(id: number | string): Promise<CheckoutRespons
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === submitUrls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -255,7 +258,7 @@ export async function updateShippingFee(id: number | string, shippingFee: number
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === submitUrls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -297,7 +300,7 @@ export async function getShippingRules(): Promise<ShippingRule[]> {
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === urls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -321,7 +324,7 @@ export async function createShippingRule(rule: ShippingRule): Promise<ShippingRu
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === urls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -345,7 +348,7 @@ export async function updateShippingRule(id: number | string, rule: ShippingRule
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === urls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
@@ -369,7 +372,7 @@ export async function deleteShippingRule(id: number | string): Promise<void> {
         const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
         const isLastUrl = j === urls.length - 1
         if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
-        if (err.response && isLastBase && isLastUrl) throw err
+        if (err.response) throw err
       }
     }
   }
