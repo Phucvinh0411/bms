@@ -346,6 +346,62 @@ public class OrderService {
         return orderRepository.existsByUserIdAndBookIdAndStatusNot(userId, bookId, OrderStatus.CANCELED);
     }
 
+    @Transactional
+    public OrderResponse confirmOrder(Long id) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
+        
+        // Chỉ cho phép xác nhận khi trạng thái đang là PENDING hoặc AWAITING_PAYMENT
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.AWAITING_PAYMENT) {
+            throw new IllegalArgumentException("Đơn hàng không thể xác nhận ở trạng thái hiện tại: " + order.getStatus());
+        }
+        
+        order.setStatus(OrderStatus.CONFIRMED);
+        Order savedOrder = orderRepository.save(order);
+        return mapToResponse(savedOrder);
+    }
+
+    @Transactional
+    public OrderResponse updateShippingFee(Long id, java.math.BigDecimal newBaseShippingFee) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
+        
+        // Cập nhật phí ship cơ bản
+        order.setBaseShippingFee(newBaseShippingFee);
+        
+        // Tính toán lại finalTotal và totalAmount
+        java.math.BigDecimal subtotal = order.getSubtotalAmount();
+        java.math.BigDecimal shipDiscount = order.getShippingDiscount();
+        java.math.BigDecimal ordDiscount = order.getOrderDiscount();
+        
+        java.math.BigDecimal finalTotal = subtotal.add(newBaseShippingFee)
+                .subtract(shipDiscount)
+                .subtract(ordDiscount);
+        
+        if (finalTotal.compareTo(java.math.BigDecimal.ZERO) < 0) {
+            finalTotal = java.math.BigDecimal.ZERO;
+        }
+        
+        order.setFinalTotal(finalTotal);
+        order.setTotalAmount(finalTotal);
+        
+        Order savedOrder = orderRepository.save(order);
+        
+        final java.math.BigDecimal calculatedTotal = finalTotal;
+        
+        // Nếu có giao dịch online liên quan, cập nhật lại số tiền thanh toán tương ứng
+        if (paymentTransactionRepository != null) {
+            paymentTransactionRepository.findByIdAndIsDeletedFalse(id).ifPresent(tx -> {
+                if ("UNPAID".equalsIgnoreCase(tx.getStatus().name())) {
+                    tx.setAmount(calculatedTotal);
+                    paymentTransactionRepository.save(tx);
+                }
+            });
+        }
+        
+        return mapToResponse(savedOrder);
+    }
+
     private OrderResponse mapToResponse(Order order) {
         String paymentStatus = "CHƯA THANH TOÁN"; // default
         if (paymentTransactionRepository != null) {

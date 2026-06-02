@@ -210,3 +210,54 @@ export async function changeOrderPaymentMethod(
   }
   throw lastError
 }
+
+export async function confirmOrder(id: number | string): Promise<CheckoutResponse> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const { submitUrls } = buildOrderApiCandidates(base)
+    for (let j = 0; j < submitUrls.length; j++) {
+      const url = `${submitUrls[j]}/${id}/confirm`
+      try {
+        const res = await axios.post(url, {}, { headers })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === submitUrls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}
+
+export async function updateShippingFee(id: number | string, shippingFee: number): Promise<CheckoutResponse> {
+  let lastError: any = null
+  const headers = getAuthHeaders()
+
+  for (let i = 0; i < BACKEND_BASE_CANDIDATES.length; i++) {
+    const base = BACKEND_BASE_CANDIDATES[i]
+    const { submitUrls } = buildOrderApiCandidates(base)
+    for (let j = 0; j < submitUrls.length; j++) {
+      const url = `${submitUrls[j]}/${id}/shipping-fee`
+      try {
+        const res = await axios.put(url, null, {
+          headers,
+          params: { shippingFee }
+        })
+        return res.data
+      } catch (err: any) {
+        lastError = err
+        const isLastBase = i === BACKEND_BASE_CANDIDATES.length - 1
+        const isLastUrl = j === submitUrls.length - 1
+        if (FALLBACK_STATUSES.has(err.response?.status) && (!isLastBase || !isLastUrl)) continue
+        if (err.response && isLastBase && isLastUrl) throw err
+      }
+    }
+  }
+  throw lastError
+}

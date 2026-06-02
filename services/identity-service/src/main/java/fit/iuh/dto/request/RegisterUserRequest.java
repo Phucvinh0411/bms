@@ -31,25 +31,4 @@ public class RegisterUserRequest {
 
     @Past(message = "Date of birth must be in the past")
     private LocalDate dateOfBirth;
-
-    // --- Thông tin Address ---
-    @NotBlank(message = "Phone number is required")
-    @Size(max = 20, message = "Phone number can't be longer than 20 characters")
-    @Pattern(regexp = "^(0|\\+84)[3|5|7|8|9][0-9]{8}$", message = "Phone number is invalid (Must be a valid Vietnamese phone number)")
-    private String phoneNumber;
-
-    @NotBlank(message = "Street address is required")
-    private String streetAddress;
-
-    @NotBlank(message = "Ward is required")
-    @Size(max = 100, message = "Ward can't be longer than 100 characters")
-    private String ward;
-
-    @NotBlank(message = "District is required")
-    @Size(max = 100, message = "District can't be longer than 100 characters")
-    private String district;
-
-    @NotBlank(message = "City/Province is required")
-    @Size(max = 100, message = "City/Province can't be longer than 100 characters")
-    private String cityProvince;
 }

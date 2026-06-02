@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/src/auth/context'
 import { getEffectiveUserId } from '@/src/cart/utils/userContext'
-import { getOrders, cancelOrder, changeOrderPaymentMethod } from '@/src/api/checkoutService'
+import { getOrders, cancelOrder, changeOrderPaymentMethod, confirmOrder, updateShippingFee } from '@/src/api/checkoutService'
 import { bookService } from '@/src/api/bookService'
 import type { CheckoutResponse } from '@/src/checkout/types'
 import { reviewService } from '@/src/api/reviewService'
@@ -43,6 +43,8 @@ export default function OrdersDashboardPage() {
   const { isSignedIn, isLoading: authLoading, activeUser } = useAuth()
   
   const [orders, setOrders] = useState<CheckoutResponse[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null)
@@ -58,6 +60,36 @@ export default function OrdersDashboardPage() {
   // Cache để lưu thông tin sách đã load, tránh gọi lại nhiều lần
   const [booksCache, setBooksCache] = useState<Record<number, ResolvedBook>>({})
   const [loadingBooks, setLoadingBooks] = useState<Record<number, boolean>>({})
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter((o) => {
+      // 1. Filter by Status
+      if (statusFilter !== 'ALL') {
+        const orderStatus = o.status?.toUpperCase() || ''
+        if (statusFilter === 'CANCELLED') {
+          if (orderStatus !== 'CANCELLED' && orderStatus !== 'CANCELED') return false
+        } else if (orderStatus !== statusFilter) {
+          return false
+        }
+      }
+      
+      // 2. Filter by Search Query
+      if (!searchQuery.trim()) return true
+      const query = searchQuery.toLowerCase().trim()
+      
+      if (String(o.id).includes(query)) return true
+      if (o.status?.toLowerCase().includes(query)) return true
+      if (o.shippingAddress?.toLowerCase().includes(query)) return true
+      
+      const hasBookTitle = o.items?.some((item) => {
+        const book = booksCache[item.bookId]
+        return book?.title?.toLowerCase().includes(query)
+      })
+      if (hasBookTitle) return true
+      
+      return false
+    })
+  }, [orders, searchQuery, statusFilter, booksCache])
 
   const orderIdParam = searchParams.get('orderId')
   const statusParam = searchParams.get('status')
@@ -284,6 +316,43 @@ export default function OrdersDashboardPage() {
     }
   }
 
+  // --- ADMIN XÁC NHẬN ĐƠN HÀNG ---
+  async function handleConfirmOrder(id: number) {
+    const confirmed = window.confirm(`Bạn có chắc muốn XÁC NHẬN đơn hàng #${id} không?`)
+    if (!confirmed) return
+
+    setActionLoading(true)
+    try {
+      await confirmOrder(id)
+      toast.success(`Đã xác nhận đơn hàng #${id} thành công!`)
+      await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
+    } catch (error: unknown) {
+      const msg = typeof error === 'object' && error !== null && 'message' in error
+        ? (error as { message: string }).message
+        : 'Xác nhận đơn hàng thất bại'
+      toast.error(msg)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // --- ADMIN CẬP NHẬT PHÍ SHIP ---
+  async function handleUpdateShippingFee(id: number, shippingFee: number) {
+    setActionLoading(true)
+    try {
+      await updateShippingFee(id, shippingFee)
+      toast.success(`Cập nhật phí vận chuyển đơn hàng #${id} thành công!`)
+      await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
+    } catch (error: unknown) {
+      const msg = typeof error === 'object' && error !== null && 'message' in error
+        ? (error as { message: string }).message
+        : 'Cập nhật phí vận chuyển thất bại'
+      toast.error(msg)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // --- MỞ MODAL ĐÁNH GIÁ ---
   function openReviewModal(bookId: number, title: string) {
     setReviewBookId(bookId)
@@ -425,6 +494,70 @@ export default function OrdersDashboardPage() {
               Lịch sử đặt hàng ({orders.length})
             </h2>
 
+            {/* Search and Status Filter Container */}
+            {orders.length > 0 && (
+              <div className="space-y-2 px-1">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tìm mã ĐH, sách, sđt, tên..."
+                    className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 pl-9 text-xs shadow-sm transition focus:border-[#a28354] focus:outline-none focus:ring-1 focus:ring-[#a28354] text-slate-900 placeholder-slate-400"
+                  />
+                  <svg
+                    className="absolute left-4 top-2.5 h-3.5 w-3.5 text-slate-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    ></path>
+                  </svg>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-4 top-2 h-4 w-4 rounded-full bg-slate-100 text-[10px] font-bold text-slate-500 hover:bg-slate-200 flex items-center justify-center transition"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Status Filter Tabs */}
+                <div className="flex flex-wrap gap-1 pt-1.5 border-t border-slate-100">
+                  {[
+                    { key: 'ALL', label: 'Tất cả' },
+                    { key: 'PENDING', label: 'Chờ duyệt' },
+                    { key: 'AWAITING_PAYMENT', label: 'Chờ thanh toán' },
+                    { key: 'SHIPPING', label: 'Đang giao' },
+                    { key: 'COMPLETED', label: 'Hoàn tất' },
+                    { key: 'CANCELLED', label: 'Đã hủy' }
+                  ].map((tab) => {
+                    const isActive = statusFilter === tab.key
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => setStatusFilter(tab.key)}
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold transition duration-150 shadow-sm border ${
+                          isActive
+                            ? 'bg-[#a28354] text-white border-[#a28354]'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {loading && (
               <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-400">
                 Đang tải danh sách đơn hàng...
@@ -441,8 +574,14 @@ export default function OrdersDashboardPage() {
               </div>
             )}
 
+            {!loading && orders.length > 0 && filteredOrders.length === 0 && (
+              <div className="rounded-3xl border border-dashed border-slate-200 bg-white/80 p-8 text-center text-xs text-slate-500">
+                Không tìm thấy đơn hàng phù hợp.
+              </div>
+            )}
+
             <div className="space-y-3 max-h-[680px] overflow-y-auto p-1.5">
-              {orders.map((order) => {
+              {filteredOrders.map((order) => {
                 const isSelected = order.id === selectedOrderId
                 const date = order.orderDate ? new Date(order.orderDate).toLocaleDateString('vi-VN') : 'Mới'
                 return (
@@ -813,6 +952,74 @@ export default function OrdersDashboardPage() {
                       </span>
                     </div>
                   </div>
+
+                  {/* ADMIN CONTROL PANEL */}
+                  {activeUser?.role === 'ADMIN' && (
+                    <div className="rounded-3xl border border-rose-200 bg-rose-50/20 p-5 space-y-4 text-left shadow-sm">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-rose-700 flex items-center gap-2 border-b border-rose-200/50 pb-2">
+                        🛡️ Quản trị viên (Admin Tools)
+                      </h3>
+                      
+                      <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center justify-between">
+                        {/* 1. Xác nhận đơn hàng */}
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-slate-700">Trạng thái đơn hàng</p>
+                          <p className="text-[10px] text-slate-500">Xác nhận đơn hàng mới và chuyển trạng thái thành CONFIRMED.</p>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          disabled={actionLoading || (selectedOrder.status !== 'PENDING' && selectedOrder.status !== 'AWAITING_PAYMENT')}
+                          onClick={() => handleConfirmOrder(selectedOrder.id)}
+                          className="px-4 py-2 rounded-full text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md hover:shadow-lg disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition shrink-0 self-start sm:self-center"
+                        >
+                          {selectedOrder.status === 'CONFIRMED' ? '✓ Đã xác nhận' : 'Xác nhận đơn hàng'}
+                        </button>
+                      </div>
+
+                      <div className="border-t border-rose-200/40 my-3"></div>
+
+                      {/* 2. Cập nhật phí ship */}
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-slate-700">Cập nhật phí vận chuyển</p>
+                          <p className="text-[10px] text-slate-500">Nhập số tiền phí vận chuyển mới để tự động cập nhật lại tổng hóa đơn thanh toán thực tế.</p>
+                        </div>
+                        
+                        <div className="flex gap-2 items-center">
+                          <div className="relative flex-1 max-w-[200px]">
+                            <input
+                              type="number"
+                              placeholder="Nhập phí ship..."
+                              id="adminShippingFeeInput"
+                              defaultValue={selectedOrder.baseShippingFee}
+                              className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-xs shadow-sm focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-900 placeholder-slate-400"
+                            />
+                            <span className="absolute right-4 top-2 text-[10px] font-bold text-slate-400">đ</span>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            disabled={actionLoading}
+                            onClick={() => {
+                              const input = document.getElementById('adminShippingFeeInput') as HTMLInputElement
+                              if (input) {
+                                const fee = Number(input.value)
+                                if (isNaN(fee) || fee < 0) {
+                                  toast.error('Phí vận chuyển phải là một số hợp lệ từ 0 trở lên!')
+                                  return
+                                }
+                                handleUpdateShippingFee(selectedOrder.id, fee)
+                              }
+                            }}
+                            className="px-4 py-2 rounded-full text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow transition"
+                          >
+                            Cập nhật phí ship
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                 </div>
               )

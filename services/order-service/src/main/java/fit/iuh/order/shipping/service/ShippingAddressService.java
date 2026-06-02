@@ -102,9 +102,23 @@ public class ShippingAddressService {
         if (request.getRecipientName() == null || request.getRecipientName().isBlank()) {
             throw new BadRequestException("recipientName is required");
         }
+        
+        // Tên người nhận không được chứa ký tự đặc biệt (chỉ chứa chữ cái tiếng Việt/Anh, số và khoảng trắng)
+        String trimmedName = request.getRecipientName().trim();
+        if (!trimmedName.matches("^[\\p{L}\\p{N}\\s]+$")) {
+            throw new BadRequestException("Tên người nhận không được chứa ký tự đặc biệt");
+        }
+
         if (request.getPhoneNumber() == null || request.getPhoneNumber().isBlank()) {
             throw new BadRequestException("phoneNumber is required");
         }
+
+        // Số điện thoại phải gồm đúng 10 chữ số
+        String trimmedPhone = request.getPhoneNumber().trim();
+        if (!trimmedPhone.matches("^\\d{10}$")) {
+            throw new BadRequestException("Số điện thoại phải bao gồm đúng 10 chữ số");
+        }
+
         if (request.getAddressLine() == null || request.getAddressLine().isBlank()) {
             throw new BadRequestException("addressLine is required");
         }

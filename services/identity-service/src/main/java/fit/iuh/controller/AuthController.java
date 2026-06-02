@@ -102,15 +102,6 @@ public class AuthController {
 
       User savedUser = userRepository.save(user);
 
-      Address address = new Address();
-      address.setUser(savedUser);
-      address.setPhoneNumber(request.getPhoneNumber());
-      address.setStreetAddress(request.getStreetAddress());
-      address.setWard(request.getWard());
-      address.setDistrict(request.getDistrict());
-      address.setCityProvince(request.getCityProvince());
-      addressRepository.save(address);
-
       String accessToken = jwtService.generateAccessToken(savedUser).toString();
       String refreshToken = jwtService.generateRefreshToken(savedUser).toString();
 

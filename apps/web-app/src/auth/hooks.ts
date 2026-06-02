@@ -101,29 +101,6 @@ export function useRegisterForm() {
       newErrors.confirmPassword = "Passwords do not match";
     }
 
-    if (!formData.phoneNumber.trim()) {
-      newErrors.phoneNumber = "Phone number is required";
-    } else if (!validatePhoneNumber(formData.phoneNumber)) {
-      newErrors.phoneNumber =
-        "Please enter a valid Vietnamese phone number (e.g., 0912345678)";
-    }
-
-    if (!formData.streetAddress.trim()) {
-      newErrors.streetAddress = "Street address is required";
-    }
-
-    if (!formData.ward.trim()) {
-      newErrors.ward = "Ward is required";
-    }
-
-    if (!formData.district.trim()) {
-      newErrors.district = "District is required";
-    }
-
-    if (!formData.cityProvince.trim()) {
-      newErrors.cityProvince = "City/Province is required";
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }, [formData]);
@@ -134,13 +111,8 @@ export function useRegisterForm() {
       name: formData.name,
       email: formData.email.toLowerCase(),
       password: formData.password,
-      phoneNumber: formData.phoneNumber,
-      streetAddress: formData.streetAddress,
-      ward: formData.ward,
-      district: formData.district,
-      cityProvince: formData.cityProvince,
       dateOfBirth: formData.dateOfBirth,
-    };
+    } as any;
   };
 
   return {
