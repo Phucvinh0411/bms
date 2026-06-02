@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/src/auth/context'
 import { getEffectiveUserId } from '@/src/cart/utils/userContext'
-import { getOrders, cancelOrder, changeOrderPaymentMethod, confirmOrder, updateShippingFee } from '@/src/api/checkoutService'
+import { getOrders, cancelOrder, changeOrderPaymentMethod, confirmOrder } from '@/src/api/checkoutService'
 import { bookService } from '@/src/api/bookService'
 import type { CheckoutResponse } from '@/src/checkout/types'
 import { reviewService } from '@/src/api/reviewService'
@@ -56,6 +56,22 @@ export default function OrdersDashboardPage() {
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewContent, setReviewContent] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+
+  // State cho Hộp thoại Xác nhận (Custom Confirm Modal)
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean
+    title: string
+    message: string
+    onConfirm: () => void
+    confirmText?: string
+    cancelText?: string
+    isDangerous?: boolean
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  })
   
   // Cache để lưu thông tin sách đã load, tránh gọi lại nhiều lần
   const [booksCache, setBooksCache] = useState<Record<number, ResolvedBook>>({})
@@ -296,61 +312,58 @@ export default function OrdersDashboardPage() {
     }
   }
 
-  // --- HỦY ĐƠN HÀNG ---
-  async function handleCancelOrder(id: number) {
-    const confirmed = window.confirm(`Bạn có chắc chắn muốn HỦY đơn hàng #${id} không?`)
-    if (!confirmed) return
-
-    setActionLoading(true)
-    try {
-      await cancelOrder(id)
-      toast.success(`Đã hủy đơn hàng #${id} thành công!`)
-      await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
-    } catch (error: unknown) {
-      const msg = typeof error === 'object' && error !== null && 'message' in error
-        ? (error as { message: string }).message
-        : 'Hủy đơn hàng thất bại'
-      toast.error(msg)
-    } finally {
-      setActionLoading(false)
-    }
+  // --- HỦY ĐƠN HÀNG (CUSTOM CONFIRM MODAL) ---
+  function triggerCancelOrder(id: number) {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Hủy đơn hàng',
+      message: `Bạn có chắc chắn muốn HỦY đơn hàng #${id} không? Hành động hủy đơn hàng này không thể được hoàn tác sau khi thực thi.`,
+      confirmText: 'Xác nhận hủy',
+      cancelText: 'Quay lại',
+      isDangerous: true,
+      onConfirm: async () => {
+        setActionLoading(true)
+        try {
+          await cancelOrder(id)
+          toast.success(`Đã hủy đơn hàng #${id} thành công!`)
+          await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
+        } catch (error: unknown) {
+          const msg = typeof error === 'object' && error !== null && 'message' in error
+            ? (error as { message: string }).message
+            : 'Hủy đơn hàng thất bại'
+          toast.error(msg)
+        } finally {
+          setActionLoading(false)
+        }
+      }
+    })
   }
 
-  // --- ADMIN XÁC NHẬN ĐƠN HÀNG ---
-  async function handleConfirmOrder(id: number) {
-    const confirmed = window.confirm(`Bạn có chắc muốn XÁC NHẬN đơn hàng #${id} không?`)
-    if (!confirmed) return
-
-    setActionLoading(true)
-    try {
-      await confirmOrder(id)
-      toast.success(`Đã xác nhận đơn hàng #${id} thành công!`)
-      await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
-    } catch (error: unknown) {
-      const msg = typeof error === 'object' && error !== null && 'message' in error
-        ? (error as { message: string }).message
-        : 'Xác nhận đơn hàng thất bại'
-      toast.error(msg)
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  // --- ADMIN CẬP NHẬT PHÍ SHIP ---
-  async function handleUpdateShippingFee(id: number, shippingFee: number) {
-    setActionLoading(true)
-    try {
-      await updateShippingFee(id, shippingFee)
-      toast.success(`Cập nhật phí vận chuyển đơn hàng #${id} thành công!`)
-      await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
-    } catch (error: unknown) {
-      const msg = typeof error === 'object' && error !== null && 'message' in error
-        ? (error as { message: string }).message
-        : 'Cập nhật phí vận chuyển thất bại'
-      toast.error(msg)
-    } finally {
-      setActionLoading(false)
-    }
+  // --- ADMIN XÁC NHẬN ĐƠN HÀNG (CUSTOM CONFIRM MODAL) ---
+  function triggerConfirmOrder(id: number) {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Duyệt đơn hàng (Admin)',
+      message: `Bạn có chắc chắn muốn XÁC NHẬN duyệt đơn hàng #${id} không? Trạng thái sẽ cập nhật sang Đã duyệt.`,
+      confirmText: 'Duyệt đơn ngay',
+      cancelText: 'Hủy bỏ',
+      isDangerous: false,
+      onConfirm: async () => {
+        setActionLoading(true)
+        try {
+          await confirmOrder(id)
+          toast.success(`Đã xác nhận đơn hàng #${id} thành công!`)
+          await loadOrders(true) // Tải lại danh sách đơn hàng ngầm
+        } catch (error: unknown) {
+          const msg = typeof error === 'object' && error !== null && 'message' in error
+            ? (error as { message: string }).message
+            : 'Xác nhận đơn hàng thất bại'
+          toast.error(msg)
+        } finally {
+          setActionLoading(false)
+        }
+      }
+    })
   }
 
   // --- MỞ MODAL ĐÁNH GIÁ ---
@@ -844,7 +857,7 @@ export default function OrdersDashboardPage() {
                         {(currentStatus === 'PENDING' || currentStatus === 'AWAITING_PAYMENT') ? (
                           <button
                             type="button"
-                            onClick={() => handleCancelOrder(selectedOrder.id)}
+                            onClick={() => triggerCancelOrder(selectedOrder.id)}
                             disabled={actionLoading}
                             className="rounded-xl bg-rose-50 border border-rose-100 px-4 py-2 text-xs font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-100 hover:border-rose-200 transition disabled:opacity-50 shadow-sm hover:shadow active:scale-[0.98]"
                           >
@@ -970,53 +983,11 @@ export default function OrdersDashboardPage() {
                         <button
                           type="button"
                           disabled={actionLoading || (selectedOrder.status !== 'PENDING' && selectedOrder.status !== 'AWAITING_PAYMENT')}
-                          onClick={() => handleConfirmOrder(selectedOrder.id)}
+                          onClick={() => triggerConfirmOrder(selectedOrder.id)}
                           className="px-4 py-2 rounded-full text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md hover:shadow-lg disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition shrink-0 self-start sm:self-center"
                         >
                           {selectedOrder.status === 'CONFIRMED' ? '✓ Đã xác nhận' : 'Xác nhận đơn hàng'}
                         </button>
-                      </div>
-
-                      <div className="border-t border-rose-200/40 my-3"></div>
-
-                      {/* 2. Cập nhật phí ship */}
-                      <div className="space-y-3">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-slate-700">Cập nhật phí vận chuyển</p>
-                          <p className="text-[10px] text-slate-500">Nhập số tiền phí vận chuyển mới để tự động cập nhật lại tổng hóa đơn thanh toán thực tế.</p>
-                        </div>
-                        
-                        <div className="flex gap-2 items-center">
-                          <div className="relative flex-1 max-w-[200px]">
-                            <input
-                              type="number"
-                              placeholder="Nhập phí ship..."
-                              id="adminShippingFeeInput"
-                              defaultValue={selectedOrder.baseShippingFee}
-                              className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-xs shadow-sm focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-900 placeholder-slate-400"
-                            />
-                            <span className="absolute right-4 top-2 text-[10px] font-bold text-slate-400">đ</span>
-                          </div>
-                          
-                          <button
-                            type="button"
-                            disabled={actionLoading}
-                            onClick={() => {
-                              const input = document.getElementById('adminShippingFeeInput') as HTMLInputElement
-                              if (input) {
-                                const fee = Number(input.value)
-                                if (isNaN(fee) || fee < 0) {
-                                  toast.error('Phí vận chuyển phải là một số hợp lệ từ 0 trở lên!')
-                                  return
-                                }
-                                handleUpdateShippingFee(selectedOrder.id, fee)
-                              }
-                            }}
-                            className="px-4 py-2 rounded-full text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow transition"
-                          >
-                            Cập nhật phí ship
-                          </button>
-                        </div>
                       </div>
                     </div>
                   )}
@@ -1111,6 +1082,49 @@ export default function OrdersDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* CUSTOM CONFIRMATION MODAL */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-sm transform overflow-hidden rounded-3xl bg-white p-6 shadow-2xl transition-all border border-slate-100 animate-scale-up text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-full ${confirmModal.isDangerous ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-blue-100 text-blue-600'}`}>
+                <AlertCircle size={20} />
+              </div>
+              <h3 className="text-sm font-black text-slate-900">
+                {confirmModal.title}
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {confirmModal.message}
+            </p>
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-full text-[11px] font-bold text-slate-500 hover:bg-slate-50 transition border border-slate-200"
+              >
+                {confirmModal.cancelText || 'Hủy bỏ'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  confirmModal.onConfirm()
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                }}
+                className={`px-4 py-2 rounded-full text-[11px] font-bold text-white transition shadow ${
+                  confirmModal.isDangerous
+                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-200'
+                    : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
+                }`}
+              >
+                {confirmModal.confirmText || 'Đồng ý'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
