@@ -26,7 +26,10 @@ function buildShippingAddressBase(base: string) {
 
 function getAuthHeaders() {
   const token = getAuthToken();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { 
+    "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "true"
+  };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 }
