@@ -25,9 +25,9 @@ public class ConversationMemoryService {
     }
 
     /**
-     * Lấy lịch sử hội thoại dưới dạng List<OllamaMessageDto>
+     * Lấy lịch sử hội thoại dưới dạng List<AiMessageDto>
      */
-    public List<OllamaMessageDto> getHistory(String sessionId) {
+    public List<AiMessageDto> getHistory(String sessionId) {
         String key = KEY_PREFIX + sessionId;
         List<String> raw = redisTemplate.opsForList().range(key, 0, -1);
         if (raw == null || raw.isEmpty()) return List.of();
@@ -35,7 +35,7 @@ public class ConversationMemoryService {
         return raw.stream()
             .map(str -> {
                 try {
-                    return objectMapper.readValue(str, OllamaMessageDto.class);
+                    return objectMapper.readValue(str, AiMessageDto.class);
                 } catch (JsonProcessingException e) {
                     return null;
                 }
@@ -51,8 +51,8 @@ public class ConversationMemoryService {
     public void append(String sessionId, String userMessage, String assistantResponse) {
         String key = KEY_PREFIX + sessionId;
         try {
-            String userJson = objectMapper.writeValueAsString(new OllamaMessageDto("user", userMessage));
-            String assistantJson = objectMapper.writeValueAsString(new OllamaMessageDto("assistant", assistantResponse));
+            String userJson = objectMapper.writeValueAsString(new AiMessageDto("user", userMessage));
+            String assistantJson = objectMapper.writeValueAsString(new AiMessageDto("assistant", assistantResponse));
 
             redisTemplate.opsForList().rightPush(key, userJson);
             redisTemplate.opsForList().rightPush(key, assistantJson);

@@ -67,7 +67,7 @@ public class AiChatController {
         Thread.startVirtualThread(() -> {
             try {
                 // 1. Lấy conversation history từ Redis
-                List<OllamaMessageDto> history = memoryService.getHistory(finalSessionId);
+                List<AiMessageDto> history = memoryService.getHistory(finalSessionId);
 
                 // 2. Gửi sessionId về client sử dụng prefix '2:'
                 emitter.send(SseEmitter.event()

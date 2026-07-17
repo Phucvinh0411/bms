@@ -1,6 +1,6 @@
 package fit.iuh.semanticsearch;
 
-import fit.iuh.config.OllamaAIProperties;
+import fit.iuh.config.OpenRouterAIProperties;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -12,29 +12,25 @@ import java.util.List;
 public class SemanticEmbeddingService {
 
     private final RestClient restClient;
-    private final OllamaAIProperties ollamaAIProperties;
+    private final OpenRouterAIProperties openRouterAIProperties;
 
     public SemanticEmbeddingService(@Qualifier("cpuRestClient") RestClient restClient,
-                                    OllamaAIProperties ollamaAIProperties) {
+                                    OpenRouterAIProperties openRouterAIProperties) {
         this.restClient = restClient;
-        this.ollamaAIProperties = ollamaAIProperties;
+        this.openRouterAIProperties = openRouterAIProperties;
     }
 
     public float[] generateEmbedding(String text) {
-        OllamaEmbeddingRequest request = new OllamaEmbeddingRequest(ollamaAIProperties.getEmbeddingModel(), text);
-        OllamaEmbeddingResponse response = callEmbeddingEndpoint("/api/embed", request);
+        OpenRouterEmbeddingRequest request = new OpenRouterEmbeddingRequest(openRouterAIProperties.getEmbeddingModel(), text);
+        OpenRouterEmbeddingResponse response = callEmbeddingEndpoint("/embeddings", request);
 
-        if (response == null || !response.hasEmbedding()) {
-            response = callEmbeddingEndpoint("/api/embeddings", request);
+        if (response == null || response.data() == null || response.data().isEmpty()) {
+            throw new IllegalStateException("OpenRouter did not return an embedding");
         }
 
-        if (response == null || !response.hasEmbedding()) {
-            throw new IllegalStateException("Ollama did not return an embedding");
-        }
-
-        List<Double> embedding = response.embedding();
+        List<Double> embedding = response.data().getFirst().embedding();
         if (embedding == null || embedding.isEmpty()) {
-            embedding = response.embeddings().getFirst();
+            throw new IllegalStateException("OpenRouter returned empty embedding list");
         }
 
         float[] vector = new float[embedding.size()];
@@ -44,13 +40,13 @@ public class SemanticEmbeddingService {
         return vector;
     }
 
-    private OllamaEmbeddingResponse callEmbeddingEndpoint(String path, OllamaEmbeddingRequest request) {
+    private OpenRouterEmbeddingResponse callEmbeddingEndpoint(String path, OpenRouterEmbeddingRequest request) {
         return restClient.post()
             .uri(path)
             .contentType(MediaType.APPLICATION_JSON)
             .body(request)
             .retrieve()
-            .body(OllamaEmbeddingResponse.class);
+            .body(OpenRouterEmbeddingResponse.class);
     }
 
     public String toVectorLiteral(float[] vector) {
@@ -65,15 +61,10 @@ public class SemanticEmbeddingService {
         return builder.toString();
     }
 
-    private record OllamaEmbeddingRequest(String model, String input) {
+    private record OpenRouterEmbeddingRequest(String model, String input) {
     }
 
-    private record OllamaEmbeddingResponse(List<Double> embedding, List<List<Double>> embeddings) {
-        boolean hasEmbedding() {
-            if (embedding != null && !embedding.isEmpty()) {
-                return true;
-            }
-            return embeddings != null && !embeddings.isEmpty() && embeddings.getFirst() != null && !embeddings.getFirst().isEmpty();
-        }
+    private record OpenRouterEmbeddingResponse(List<EmbeddingData> data) {
+        record EmbeddingData(List<Double> embedding) {}
     }
 }

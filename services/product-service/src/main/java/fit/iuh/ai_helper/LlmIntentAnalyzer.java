@@ -1,23 +1,24 @@
 package fit.iuh.ai_helper;
 
-import fit.iuh.config.OllamaAIProperties;
+import fit.iuh.config.OpenRouterAIProperties;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 
 @Component
 public class LlmIntentAnalyzer {
 
     private final RestClient restClient;
-    private final OllamaAIProperties properties;
+    private final OpenRouterAIProperties properties;
     private final ObjectMapper objectMapper;
 
     public LlmIntentAnalyzer(@Qualifier("cpuRestClient") RestClient restClient,
-                             OllamaAIProperties properties,
+                             OpenRouterAIProperties properties,
                              ObjectMapper objectMapper) {
         this.restClient = restClient;
         this.properties = properties;
@@ -26,29 +27,30 @@ public class LlmIntentAnalyzer {
 
     public IntentResponseDto analyzeWithLlm(String userMessage) {
         String systemPrompt = buildSystemPrompt();
-        String model = safeText(properties.getIntentModel(), "qwen2.5");
+        String model = safeText(properties.getIntentModel(), "google/gemini-2.5-flash");
 
-        var requestBody = new OllamaRequestDto(
-            model,
-            List.of(
-                new OllamaMessageDto("system", systemPrompt),
-                new OllamaMessageDto("user", userMessage)
+        var requestBody = Map.of(
+            "model", model,
+            "messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userMessage)
             ),
-            false
+            "temperature", 0.0
         );
 
         try {
             var response = restClient.post()
-                .uri("/api/chat")
+                .uri("/chat/completions")
                 .body(requestBody)
                 .retrieve()
-                .body(OllamaResponseDto.class);
+                .body(OpenRouterChatResponse.class);
 
-            if (response == null || response.getMessage() == null || response.getMessage().getContent() == null) {
+            if (response == null || response.choices() == null || response.choices().isEmpty() 
+                    || response.choices().getFirst().message() == null || response.choices().getFirst().message().content() == null) {
                 return IntentResponseDto.generalChatFallback();
             }
 
-            String content = response.getMessage().getContent();
+            String content = response.choices().getFirst().message().content();
             String jsonPayload = extractJsonPayload(content);
             if (jsonPayload == null || jsonPayload.isBlank()) {
                 return IntentResponseDto.generalChatFallback();

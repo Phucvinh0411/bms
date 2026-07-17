@@ -1,6 +1,6 @@
 package fit.iuh.ai_helper;
 
-import fit.iuh.config.OllamaAIProperties;
+import fit.iuh.config.OpenRouterAIProperties;
 import fit.iuh.semanticsearch.HybridSearchService;
 import fit.iuh.semanticsearch.SemanticBookSearchDTO;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -27,7 +27,7 @@ public class AgentRouterService {
     private final LlmIntentAnalyzer llmAnalyzer;
     private final HybridSearchService bookSearchService; // "Tool" cứng để lục lọi DB sách
     private final RestClient restClient;
-    private final OllamaAIProperties properties;
+    private final OpenRouterAIProperties properties;
     private final QueryRouterService queryRouter;
     private final CrossEncoderRerankerService crossReranker;
     private final LlmAsAJudgeService judgeService;
@@ -38,7 +38,7 @@ public class AgentRouterService {
                               LlmIntentAnalyzer llmAnalyzer,
                               HybridSearchService bookSearchService,
                               @Qualifier("chatRestClient") RestClient restClient,
-                              OllamaAIProperties properties,
+                              OpenRouterAIProperties properties,
                               QueryRouterService queryRouter,
                               CrossEncoderRerankerService crossReranker,
                               LlmAsAJudgeService judgeService) {
@@ -140,38 +140,38 @@ public class AgentRouterService {
     }
 
     /**
-     * Hàm phụ trợ: Tạo cấu trúc JSON Input và gửi sang Ollama endpoint /api/chat
+     * Hàm phụ trợ: Tạo cấu trúc JSON Input và gửi sang OpenRouter endpoint /chat/completions
      */
     private String generateFinalResponse(String systemPrompt, String userMessage) {
         String model = properties.getChatModel() == null || properties.getChatModel().isBlank()
-            ? "qwen2.5"
+            ? "google/gemini-2.5-flash"
             : properties.getChatModel().trim();
 
-        var requestBody = new OllamaRequestDto(
-            model,
-            List.of(
-                new OllamaMessageDto("system", systemPrompt),
-                new OllamaMessageDto("user", userMessage)
-            ),
-            false
+        var requestBody = Map.of(
+            "model", model,
+            "messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userMessage)
+            )
         );
 
         try {
             var response = restClient.post()
-                .uri("/api/chat")
+                .uri("/chat/completions")
                 .body(requestBody)
                 .retrieve()
-                .body(OllamaResponseDto.class);
+                .body(OpenRouterChatResponse.class);
 
-            if (response != null && response.getMessage() != null) {
-                String content = response.getMessage().getContent();
+            if (response != null && response.choices() != null && !response.choices().isEmpty() 
+                    && response.choices().getFirst().message() != null) {
+                String content = response.choices().getFirst().message().content();
                 if (content != null && !content.isBlank()) {
                     return content.trim();
                 }
             }
 
         } catch (Exception e) {
-            System.err.println("Lỗi kết nối API Ollama ở bước sinh câu trả lời: " + e.getMessage());
+            System.err.println("Lỗi kết nối API OpenRouter ở bước sinh câu trả lời: " + e.getMessage());
             return "Xin lỗi bạn, hệ thống xử lý AI của nhà sách đang bận xử lý. Bạn vui lòng thử lại sau giây lát!";
         }
 
@@ -321,8 +321,8 @@ public class AgentRouterService {
      * Streaming version: Gửi từng token qua callback thay vì đợi toàn bộ.
      */
     public void routeAndExecuteStreaming(String userMessage,
-                                          List<OllamaMessageDto> history,
-                                          Consumer<SseChunk> onChunk) {
+                                         List<AiMessageDto> history,
+                                         Consumer<SseChunk> onChunk) {
         StopWatch sw = new StopWatch("RAG Adaptive Streaming Profiler");
 
         // ─── BƯỚC 1: ADAPTIVE ROUTING ───
@@ -418,23 +418,27 @@ public class AgentRouterService {
 
     private void streamChatResponse(String systemPrompt,
                                      String userMessage,
-                                     List<OllamaMessageDto> history,
+                                     List<AiMessageDto> history,
                                      Consumer<SseChunk> onChunk) {
         String model = properties.getChatModel() == null || properties.getChatModel().isBlank()
-            ? "qwen2.5" : properties.getChatModel().trim();
+            ? "google/gemini-2.5-flash" : properties.getChatModel().trim();
 
-        List<OllamaMessageDto> messages = new ArrayList<>();
-        messages.add(new OllamaMessageDto("system", systemPrompt));
+        List<AiMessageDto> messages = new ArrayList<>();
+        messages.add(new AiMessageDto("system", systemPrompt));
         if (history != null) {
             messages.addAll(history);
         }
-        messages.add(new OllamaMessageDto("user", userMessage));
+        messages.add(new AiMessageDto("user", userMessage));
 
-        var requestBody = new OllamaRequestDto(model, messages, true); // stream = TRUE
+        var requestBody = Map.of(
+            "model", model,
+            "messages", messages,
+            "stream", true
+        );
 
         try {
             restClient.post()
-                .uri("/api/chat")
+                .uri("/chat/completions")
                 .body(requestBody)
                 .exchange((clientRequest, clientResponse) -> {
                     try (var reader = new BufferedReader(
@@ -442,17 +446,23 @@ public class AgentRouterService {
                         String line;
                         while ((line = reader.readLine()) != null) {
                             if (line.isBlank()) continue;
-                            try {
-                                OllamaResponseDto chunk = objectMapper.readValue(line, OllamaResponseDto.class);
-                                if (chunk.getMessage() != null && chunk.getMessage().getContent() != null) {
-                                    String token = chunk.getMessage().getContent();
-                                    if (!token.isEmpty()) {
-                                        onChunk.accept(SseChunk.text(token));
-                                    }
+                            String trimmedLine = line.trim();
+                            if (trimmedLine.startsWith("data:")) {
+                                String payload = trimmedLine.substring(5).trim();
+                                if ("[DONE]".equals(payload)) {
+                                    break;
                                 }
-                                if (chunk.isDone()) break;
-                            } catch (Exception parseErr) {
-                                // Skip malformed line
+                                try {
+                                    OpenRouterStreamChunk chunk = objectMapper.readValue(payload, OpenRouterStreamChunk.class);
+                                    if (chunk.choices() != null && !chunk.choices().isEmpty() && chunk.choices().getFirst().delta() != null) {
+                                        String token = chunk.choices().getFirst().delta().content();
+                                        if (token != null && !token.isEmpty()) {
+                                            onChunk.accept(SseChunk.text(token));
+                                        }
+                                    }
+                                } catch (Exception parseErr) {
+                                    // Skip malformed line
+                                }
                             }
                         }
                     }

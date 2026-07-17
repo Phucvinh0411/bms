@@ -2,7 +2,7 @@ package fit.iuh.ai_helper;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import fit.iuh.config.OllamaAIProperties;
+import fit.iuh.config.OpenRouterAIProperties;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -13,12 +13,12 @@ import java.util.Map;
 public class QueryRouterService {
 
     private final RestClient restClient;
-    private final OllamaAIProperties properties;
+    private final OpenRouterAIProperties properties;
     private final ObjectMapper objectMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public QueryRouterService(@Qualifier("cpuRestClient") RestClient restClient,
-                              OllamaAIProperties properties) {
+                              OpenRouterAIProperties properties) {
         this.restClient = restClient;
         this.properties = properties;
     }
@@ -46,7 +46,7 @@ public class QueryRouterService {
 
         String model = properties.getIntentModel() != null && !properties.getIntentModel().isBlank()
             ? properties.getIntentModel().trim()
-            : "qwen2.5";
+            : "google/gemini-2.5-flash";
 
         var requestBody = Map.of(
             "model", model,
@@ -54,22 +54,22 @@ public class QueryRouterService {
                 Map.of("role", "system", "content", systemPrompt),
                 Map.of("role", "user", "content", userMessage)
             ),
-            "stream", false,
-            "options", Map.of("temperature", 0.0)
+            "temperature", 0.0
         );
 
         try {
             var response = restClient.post()
-                .uri("/api/chat")
+                .uri("/chat/completions")
                 .body(requestBody)
                 .retrieve()
-                .body(OllamaResponseDto.class);
+                .body(OpenRouterChatResponse.class);
 
-            if (response == null || response.getMessage() == null || response.getMessage().getContent() == null) {
-                return RoutingResultDto.fastFallback("Không nhận được phản hồi từ Ollama");
+            if (response == null || response.choices() == null || response.choices().isEmpty() 
+                    || response.choices().getFirst().message() == null || response.choices().getFirst().message().content() == null) {
+                return RoutingResultDto.fastFallback("Không nhận được phản hồi từ OpenRouter");
             }
 
-            String content = response.getMessage().getContent();
+            String content = response.choices().getFirst().message().content();
             String jsonPayload = extractJson(content);
             return objectMapper.readValue(jsonPayload, RoutingResultDto.class);
 

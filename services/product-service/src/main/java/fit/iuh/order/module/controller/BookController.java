@@ -30,6 +30,12 @@ public class BookController {
         return ResponseEntity.ok(bookService.getBookById(id));
     }
 
+    // Lấy danh sách sách theo danh sách ID (POST /api/books/batch)
+    @PostMapping("/batch")
+    public ResponseEntity<List<Book>> getBooksByIds(@RequestBody List<Long> ids) {
+        return ResponseEntity.ok(bookService.getBooksByIds(ids));
+    }
+
     // Thêm sách mới (POST /api/books)
     @PostMapping
     public ResponseEntity<Book> createBook(@RequestBody BookRequestDTO requestDTO) {

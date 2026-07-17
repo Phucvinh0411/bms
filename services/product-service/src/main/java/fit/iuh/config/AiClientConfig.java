@@ -44,23 +44,28 @@ public class AiClientConfig {
     }
 
     @Bean("chatRestClient")
-    public RestClient chatRestClient(OllamaAIProperties properties,
+    public RestClient chatRestClient(OpenRouterAIProperties properties,
                                      HttpComponentsClientHttpRequestFactory ollamaRequestFactory) {
-        return buildClient(properties.getChatUrl(), ollamaRequestFactory);
+        return buildClient(properties, ollamaRequestFactory);
     }
 
     @Bean("cpuRestClient")
-    public RestClient cpuRestClient(OllamaAIProperties properties,
+    public RestClient cpuRestClient(OpenRouterAIProperties properties,
                                     HttpComponentsClientHttpRequestFactory ollamaRequestFactory) {
-        return buildClient(properties.getCpuUrl(), ollamaRequestFactory);
+        return buildClient(properties, ollamaRequestFactory);
     }
 
-    private RestClient buildClient(String baseUrl, HttpComponentsClientHttpRequestFactory requestFactory) {
-        String effectiveBaseUrl = baseUrl == null || baseUrl.isBlank() ? "http://localhost:11434" : baseUrl.trim();
+    private RestClient buildClient(OpenRouterAIProperties properties, HttpComponentsClientHttpRequestFactory requestFactory) {
+        String baseUrl = properties.getBaseUrl();
+        String effectiveBaseUrl = baseUrl == null || baseUrl.isBlank() ? "https://openrouter.ai/api/v1" : baseUrl.trim();
+        String apiKey = properties.getApiKey() == null ? "" : properties.getApiKey().trim();
         return RestClient.builder()
             .baseUrl(effectiveBaseUrl)
             .requestFactory(requestFactory)
             .defaultHeader("Content-Type", "application/json")
+            .defaultHeader("Authorization", "Bearer " + apiKey)
+            .defaultHeader("HTTP-Referer", "http://localhost:8080")
+            .defaultHeader("X-OpenRouter-Title", "Bookstore Management System")
             .build();
     }
 }

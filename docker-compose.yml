@@ -84,9 +84,11 @@ services:
       - AWS_SECRET_KEY=${AWS_SECRET_KEY:-local-dev-secret-key}
       - AWS_REGION=${AWS_REGION:-ap-southeast-1}
       - AWS_S3_BUCKET=${AWS_S3_BUCKET:-local-dev-bucket}
-      - OLLAMA_CHAT_URL=${OLLAMA_CHAT_URL}
-      - OLLAMA_CPU_URL=${OLLAMA_CPU_URL}
-      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL}
+      - OPENROUTER_EMBEDDING_MODEL=${OPENROUTER_EMBEDDING_MODEL}
+      - OPENROUTER_INTENT_MODEL=${OPENROUTER_INTENT_MODEL}
+      - OPENROUTER_CHAT_MODEL=${OPENROUTER_CHAT_MODEL}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     networks:
@@ -211,47 +213,7 @@ services:
     networks:
       - bookstore-network
 
-  ai-engine-gpu:
-    image: ollama/ollama:0.30.0-rc12
-    container_name: bookstore-ai-engine-gpu
-    restart: unless-stopped
-    gpus: all # Commented out because WSL/host environment lacks NVIDIA GPU/adapters
-    ports:
-      - "11434:11434"
-    environment:
-      - OLLAMA_MAX_LOADED_MODELS=1
-    volumes:
-      - ollama_gpu_data:/root/.ollama
-    networks:
-      - bookstore-network
 
-  ai-engine-cpu:
-    image: ollama/ollama:0.30.0-rc12
-    container_name: bookstore-ai-engine-cpu
-    restart: unless-stopped
-    ports:
-      - "11435:11434"
-    environment:
-      - OLLAMA_MAX_LOADED_MODELS=2
-    volumes:
-      - ollama_cpu_data:/root/.ollama
-    networks:
-      - bookstore-network
-
-  ollama-pull-model:
-    image: curlimages/curl:latest
-    container_name: ollama-pull-model
-    networks:
-      - bookstore-network
-    depends_on:
-      - ai-engine-gpu
-      - ai-engine-cpu
-    env_file:
-      - .env
-    volumes:
-      - ./scripts/pull-ollama-models.sh:/pull-ollama-models.sh:ro
-    command: >
-      /bin/sh /pull-ollama-models.sh
   rabbitmq:
     image: rabbitmq:3.12-management-alpine
     container_name: bookstore-rabbitmq
@@ -288,8 +250,6 @@ services:
 volumes:
   postgres_data:
     driver: local
-  ollama_gpu_data:
-  ollama_cpu_data:
   reranker_data:
 
 networks:

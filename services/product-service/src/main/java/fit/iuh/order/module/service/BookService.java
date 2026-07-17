@@ -41,6 +41,14 @@ public class BookService {
             .orElseThrow(() -> new RuntimeException("Không tìm thấy sách với ID: " + id));
     }
 
+    // Lấy danh sách sách theo danh sách ID (batch)
+    public List<Book> getBooksByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return bookRepository.findAllById(ids);
+    }
+
     // Thêm sách mới
     @Transactional
     public Book createBook(BookRequestDTO requestDTO) {
