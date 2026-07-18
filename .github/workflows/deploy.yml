@@ -39,6 +39,12 @@ jobs:
             # 3. Ghi đè file .env đầy đủ từ GitHub Secret (sử dụng printf để giữ nguyên ký tự $)
             printf "%s\n" "$ENV_FILE" > .env
 
+            # 3.5. Tự động tạo các schema trên RDS (sử dụng container postgres tạm thời)
+            echo "Đang tự động khởi tạo các Schema trên RDS..."
+            docker run --rm -e PGPASSWORD=rootpassword postgres:16-alpine \
+              psql -h bms-db.cpaw6oeiqxs2.ap-southeast-1.rds.amazonaws.com -U postgres -d postgres -c \
+              "CREATE SCHEMA IF NOT EXISTS identity; CREATE SCHEMA IF NOT EXISTS product; CREATE SCHEMA IF NOT EXISTS orders; CREATE SCHEMA IF NOT EXISTS promotion; CREATE SCHEMA IF NOT EXISTS report;"
+
             # 4. Khởi chạy toàn bộ hệ thống bằng docker-compose.prod.yml
             echo "Đang khởi chạy hệ thống bằng Docker Compose..."
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
