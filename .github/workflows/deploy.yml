@@ -21,6 +21,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
+          envs: ENV_FILE
           script: |
             # 1. Tạo thư mục deploy nếu chưa có và di chuyển vào đó
             mkdir -p ~/bms && cd ~/bms
@@ -35,8 +36,8 @@ jobs:
               git reset --hard origin/main
             fi
 
-            # 3. Ghi đè file .env đầy đủ từ GitHub Secret
-            echo "${{ secrets.ENV_FILE }}" > .env
+            # 3. Ghi đè file .env đầy đủ từ GitHub Secret (sử dụng printf để giữ nguyên ký tự $)
+            printf "%s\n" "$ENV_FILE" > .env
 
             # 4. Khởi chạy toàn bộ hệ thống bằng docker-compose.prod.yml
             echo "Đang khởi chạy hệ thống bằng Docker Compose..."
@@ -45,3 +46,5 @@ jobs:
             # 5. Dọn dẹp các tài nguyên Docker thừa để tiết kiệm ổ đĩa EC2
             echo "Dọn dẹp hệ thống Docker..."
             docker system prune -af
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
