@@ -1,0 +1,62 @@
+name: Tự động hóa Deploy BMS Backend sang AWS EC2
+
+on:
+  push:
+    branches:
+      - main # Pipeline sẽ tự chạy mỗi khi bạn push code hoặc merge PR vào nhánh main
+
+jobs:
+  deploy_to_ec2:
+    name: Triển khai ứng dụng lên server EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Lấy mã nguồn mới nhất từ GitHub
+        uses: actions/checkout@v4
+
+      - name: Đăng nhập EC2 và thực thi lệnh Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            # 1. Tạo thư mục deploy trên server nếu chưa có và di chuyển vào đó
+            mkdir -p ~/bms-deploy && cd ~/bms-deploy
+
+            # 2. Tự động ghi đè và tạo file .env từ các GitHub Secrets
+            echo "DB_URL=${{ secrets.DB_URL }}" > .env
+            echo "DB_USERNAME=postgres" >> .env
+            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+            echo "JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}" >> .env
+            echo "REDIS_HOST=bms-redis" >> .env
+            echo "REDIS_PORT=6379" >> .env
+            echo "RABBITMQ_HOST=bms-rabbitmq" >> .env
+
+            # 3. Tạo hoặc cập nhật file docker-compose.yml ngay trên server
+            cat << 'EOF' > docker-compose.yml
+            version: '3.8'
+
+            services:
+              bms-redis:
+                image: redis:alpine
+                container_name: bms_redis
+                ports:
+                  - "6379:6379"
+                restart: always
+
+              bms-rabbitmq:
+                image: rabbitmq:3-management-alpine
+                container_name: bms_rabbitmq
+                ports:
+                  - "5672:5672"
+                  - "15672:15672"
+                restart: always
+            EOF
+
+            # 4. Ra lệnh cho Docker Compose khởi chạy hạ tầng ngầm
+            docker compose up -d
+            
+            # 5. Dọn dẹp các tài nguyên Docker cũ không sử dụng để tiết kiệm ổ cứng
+            docker system prune -f
