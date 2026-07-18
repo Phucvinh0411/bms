@@ -22,41 +22,26 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            # 1. Tạo thư mục deploy trên server nếu chưa có và di chuyển vào đó
-            mkdir -p ~/bms-deploy && cd ~/bms-deploy
+            # 1. Tạo thư mục deploy nếu chưa có và di chuyển vào đó
+            mkdir -p ~/bms && cd ~/bms
 
-            # 2. Tự động ghi đè và tạo file .env từ các GitHub Secrets
-            echo "DB_URL=${{ secrets.DB_URL }}" > .env
-            echo "DB_USERNAME=postgres" >> .env
-            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-            echo "JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}" >> .env
-            echo "REDIS_HOST=bms-redis" >> .env
-            echo "REDIS_PORT=6379" >> .env
-            echo "RABBITMQ_HOST=bms-rabbitmq" >> .env
+            # 2. Clone mã nguồn nếu chưa có, hoặc reset và pull code mới nhất từ nhánh main
+            if [ ! -d ".git" ]; then
+              echo "Thư mục dự án chưa có Git, tiến hành clone..."
+              git clone https://github.com/Phucvinh0411/bms.git .
+            else
+              echo "Thư mục dự án đã có, tiến hành đồng bộ code mới nhất..."
+              git fetch --all
+              git reset --hard origin/main
+            fi
 
-            # 3. Tạo hoặc cập nhật file docker-compose.yml ngay trên server
-            cat << 'EOF' > docker-compose.yml
-            version: '3.8'
+            # 3. Ghi đè file .env đầy đủ từ GitHub Secret
+            echo "${{ secrets.ENV_FILE }}" > .env
 
-            services:
-              bms-redis:
-                image: redis:alpine
-                container_name: bms_redis
-                ports:
-                  - "6379:6379"
-                restart: always
+            # 4. Khởi chạy toàn bộ hệ thống bằng docker-compose.prod.yml
+            echo "Đang khởi chạy hệ thống bằng Docker Compose..."
+            docker compose -f docker-compose.prod.yml up -d --build
 
-              bms-rabbitmq:
-                image: rabbitmq:3-management-alpine
-                container_name: bms_rabbitmq
-                ports:
-                  - "5672:5672"
-                  - "15672:15672"
-                restart: always
-            EOF
-
-            # 4. Ra lệnh cho Docker Compose khởi chạy hạ tầng ngầm
-            docker compose up -d
-            
-            # 5. Dọn dẹp các tài nguyên Docker cũ không sử dụng để tiết kiệm ổ cứng
-            docker system prune -f
+            # 5. Dọn dẹp các tài nguyên Docker thừa để tiết kiệm ổ đĩa EC2
+            echo "Dọn dẹp hệ thống Docker..."
+            docker system prune -af

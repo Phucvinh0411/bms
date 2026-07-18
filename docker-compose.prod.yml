@@ -1,31 +1,5 @@
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: bookstore-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: defaultdb
-      POSTGRES_MULTIPLE_DATABASES: "identity_db,product_db,order_db,promotion_db,report_db"
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./db/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
-    networks:
-      - bookstore-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d defaultdb"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 256M
+
 
   identity-service:
     build:
@@ -34,9 +8,7 @@ services:
     image: ${IDENTITY_SERVICE_IMAGE:-identity-service:latest}
     container_name: identity-service
     restart: on-failure
-    depends_on:
-      postgres:
-        condition: service_healthy
+
     deploy:
       resources:
         limits:
@@ -68,8 +40,6 @@ services:
     volumes:
       - ./.env:/app/.env:ro
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_started
     deploy:
@@ -102,8 +72,6 @@ services:
     container_name: order-service
     restart: on-failure
     depends_on:
-      postgres:
-        condition: service_healthy
       rabbitmq:
         condition: service_started
       redis:
@@ -133,9 +101,7 @@ services:
     image: ${PROMOTION_SERVICE_IMAGE:-promotion-service:latest}
     container_name: promotion-service
     restart: on-failure
-    depends_on:
-      postgres:
-        condition: service_healthy
+
     deploy:
       resources:
         limits:
@@ -154,9 +120,7 @@ services:
     image: ${REPORT_SERVICE_IMAGE:-report-service:latest}
     container_name: report-service
     restart: on-failure
-    depends_on:
-      postgres:
-        condition: service_healthy
+
     deploy:
       resources:
         limits:
@@ -228,8 +192,6 @@ services:
       - bookstore-network
 
 volumes:
-  postgres_data:
-    driver: local
   reranker_data:
 
 networks:
