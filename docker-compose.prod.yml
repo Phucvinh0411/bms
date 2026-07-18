@@ -16,9 +16,12 @@ services:
         reservations:
           memory: 512M
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/identity_db
-      - SPRING_DATASOURCE_USERNAME=identity_db
-      - SPRING_DATASOURCE_PASSWORD=identity_db
+      - IDENTITY_DB_URL=${IDENTITY_DB_URL}
+      - IDENTITY_DB_USER=${IDENTITY_DB_USER}
+      - IDENTITY_DB_PASSWORD=${IDENTITY_DB_PASSWORD}
+      - SPRING_DATASOURCE_URL=${IDENTITY_DB_URL}
+      - SPRING_DATASOURCE_USERNAME=${IDENTITY_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${IDENTITY_DB_PASSWORD}
       - MAIL_USERNAME=${MAIL_USERNAME}
       - MAIL_PASSWORD=${MAIL_PASSWORD}
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY:-local-dev-access-key}
@@ -47,9 +50,12 @@ services:
         limits:
           memory: 768M
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/product_db
-      - SPRING_DATASOURCE_USERNAME=product_db
-      - SPRING_DATASOURCE_PASSWORD=product_db
+      - PRODUCT_DB_URL=${PRODUCT_DB_URL}
+      - PRODUCT_DB_USER=${PRODUCT_DB_USER}
+      - PRODUCT_DB_PASSWORD=${PRODUCT_DB_PASSWORD}
+      - SPRING_DATASOURCE_URL=${PRODUCT_DB_URL}
+      - SPRING_DATASOURCE_USERNAME=${PRODUCT_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${PRODUCT_DB_PASSWORD}
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY:-local-dev-access-key}
       - AWS_SECRET_KEY=${AWS_SECRET_KEY:-local-dev-secret-key}
       - AWS_REGION=${AWS_REGION:-ap-southeast-1}
@@ -81,9 +87,12 @@ services:
         limits:
           memory: 768M
     environment:
-      - ORDER_DB_URL=${ORDER_DB_URL:-jdbc:postgresql://postgres:5432/order_db}
-      - ORDER_DB_USER=${ORDER_DB_USER:-order_db}
-      - ORDER_DB_PASSWORD=${ORDER_DB_PASSWORD:-order_db}
+      - ORDER_DB_URL=${ORDER_DB_URL}
+      - ORDER_DB_USER=${ORDER_DB_USER}
+      - ORDER_DB_PASSWORD=${ORDER_DB_PASSWORD}
+      - SPRING_DATASOURCE_URL=${ORDER_DB_URL}
+      - SPRING_DATASOURCE_USERNAME=${ORDER_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${ORDER_DB_PASSWORD}
       - PAYOS_CLIENT_ID=${PAYOS_CLIENT_ID}
       - PAYOS_API_KEY=${PAYOS_API_KEY}
       - PAYOS_CHECKSUM_KEY=${PAYOS_CHECKSUM_KEY}
@@ -107,9 +116,12 @@ services:
         limits:
           memory: 768M
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/promotion_db
-      - SPRING_DATASOURCE_USERNAME=promotion_db
-      - SPRING_DATASOURCE_PASSWORD=promotion_db
+      - PROMOTION_DB_URL=${PROMOTION_DB_URL}
+      - PROMOTION_DB_USER=${PROMOTION_DB_USER}
+      - PROMOTION_DB_PASSWORD=${PROMOTION_DB_PASSWORD}
+      - SPRING_DATASOURCE_URL=${PROMOTION_DB_URL}
+      - SPRING_DATASOURCE_USERNAME=${PROMOTION_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${PROMOTION_DB_PASSWORD}
     networks:
       - bookstore-network
 
@@ -126,9 +138,12 @@ services:
         limits:
           memory: 768M
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/report_db
-      - SPRING_DATASOURCE_USERNAME=report_db
-      - SPRING_DATASOURCE_PASSWORD=report_db
+      - REPORT_DB_URL=${REPORT_DB_URL}
+      - REPORT_DB_USER=${REPORT_DB_USER}
+      - REPORT_DB_PASSWORD=${REPORT_DB_PASSWORD}
+      - SPRING_DATASOURCE_URL=${REPORT_DB_URL}
+      - SPRING_DATASOURCE_USERNAME=${REPORT_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${REPORT_DB_PASSWORD}
     networks:
       - bookstore-network
 
